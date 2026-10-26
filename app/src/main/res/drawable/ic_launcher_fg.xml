@@ -3,6 +3,6 @@
     android:viewportWidth="108" android:viewportHeight="108">
     <path android:fillColor="#00000000" android:strokeColor="@color/icon_fg"
         android:strokeWidth="4" android:pathData="M54,30a24,24 0 1,0 0.01,0z" />
-    <path android:fillColor="@color/icon_fg" android:pathData="M54,34 L60,54 L54,50 L48,54 Z" />
-    <path android:fillColor="#FFB8C7D6" android:pathData="M54,74 L48,54 L54,58 L60,54 Z" />
+    <path android:fillColor="@color/icon_fg2" android:pathData="M54,34 L60,54 L54,50 L48,54 Z" />
+    <path android:fillColor="#FFC9CCE0" android:pathData="M54,74 L48,54 L54,58 L60,54 Z" />
 </vector>

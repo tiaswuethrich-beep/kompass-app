@@ -90,18 +90,53 @@ private fun PermissionRow(title: String, ok: Boolean, why: String, onFix: () -> 
 fun PermissionsBlock(refreshKey: Int, onChanged: () -> Unit) {
     val ctx = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { onChanged() }
+    val healthLauncher = rememberLauncherForActivityResult(androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()) { onChanged() }
+    // Bei Rückkehr aus den Einstellungen neu prüfen.
+    val tick = ch.akh.kompass.ui.rememberTicker(5_000L)
     fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
     val notif = Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)
     val cal = granted(Manifest.permission.READ_CALENDAR)
     val exact = Scheduler.canExact(ctx)
     val full = Build.VERSION.SDK_INT < 34 || ctx.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
     val usage = ScreenTime.hasPermission(ctx)
+    val battery = ch.akh.kompass.util.Dnd.batteryUnrestricted(ctx)
+    val dnd = ch.akh.kompass.util.Dnd.granted(ctx)
+    val healthAvailable = remember(tick) { ch.akh.kompass.util.Health.available(ctx) }
+    val health by androidx.compose.runtime.produceState(false, refreshKey, tick) {
+        value = withContext(Dispatchers.IO) { ch.akh.kompass.util.Health.hasAll(ctx) }
+    }
     fun open(i: Intent) = try {
         ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: Exception) {
         ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+    val runtime = buildList {
+        if (!notif && Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        if (!cal) add(Manifest.permission.READ_CALENDAR)
+    }
+    // Reihenfolge für "Alles erlauben": erst die normalen Abfragen, dann eine Einstellung nach der anderen.
+    val nextStep: (() -> Unit)? = when {
+        runtime.isNotEmpty() -> { { launcher.launch(runtime.toTypedArray()) } }
+        !exact && Build.VERSION.SDK_INT >= 31 -> { { open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${ctx.packageName}"))) } }
+        !full -> { { open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${ctx.packageName}"))) } }
+        !usage -> { { open(ScreenTime.settingsIntent()) } }
+        healthAvailable && !health -> { { healthLauncher.launch(ch.akh.kompass.util.Health.PERMISSIONS) } }
+        !battery -> { { open(ch.akh.kompass.util.Dnd.batteryIntent(ctx)) } }
+        !dnd -> { { open(ch.akh.kompass.util.Dnd.settingsIntent()) } }
+        else -> null
+    }
+    val missing = listOf(notif, exact, full, usage, cal, battery, dnd, !healthAvailable || health).count { !it }
     Column {
+        if (nextStep != null) {
+            Button(onClick = nextStep, modifier = Modifier.fillMaxWidth()) {
+                Text(if (missing > 1) "Alles erlauben (noch $missing Schritte)" else "Letzten Schritt erlauben")
+            }
+            Muted("Jeder Tipp öffnet die nächste Freigabe. Zurückkommen, nochmals tippen, bis alles grün ist. Alle Daten bleiben auf deinem Handy.")
+            Spacer(Modifier.height(8.dp))
+        } else {
+            Text("Alles erlaubt. Kompass kann alles, was Android zulässt.", color = Good)
+            Spacer(Modifier.height(8.dp))
+        }
         PermissionRow("Benachrichtigungen", notif, "Für Erinnerungen und den Wecker") {
             if (Build.VERSION.SDK_INT >= 33) launcher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         }
@@ -113,6 +148,12 @@ fun PermissionsBlock(refreshKey: Int, onChanged: () -> Unit) {
         }
         PermissionRow("Nutzungszugriff", usage, "Liest deine Bildschirmzeit") { open(ScreenTime.settingsIntent()) }
         PermissionRow("Kalender", cal, "Zeigt deine Termine auf Heute") { launcher.launch(arrayOf(Manifest.permission.READ_CALENDAR)) }
+        PermissionRow("Fitbit über Health Connect", !healthAvailable || health,
+            if (healthAvailable) "Schlaf und Schritte automatisch" else "Health Connect ist auf diesem Handy nicht bereit") {
+            healthLauncher.launch(ch.akh.kompass.util.Health.PERMISSIONS)
+        }
+        PermissionRow("Ohne Akku-Einschränkung", battery, "Damit Android Erinnerungen nicht verschluckt") { open(ch.akh.kompass.util.Dnd.batteryIntent(ctx)) }
+        PermissionRow("Nicht stören steuern", dnd, "Schaltet während Fokus-Blöcken automatisch auf lautlos") { open(ch.akh.kompass.util.Dnd.settingsIntent()) }
     }
 }
 
@@ -169,6 +210,50 @@ fun SettingsScreen(nav: NavHostController) {
                     }
                 }
                 Muted("Normalerweise schaltest du Phasen im Plan frei. Das hier ist für Sonderfälle.")
+            }
+        }
+        item {
+            Section(title = "Erinnerungen und Check-ins") {
+                Text("Nachfassen, wenn etwas noch offen ist", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0 to "Nie", 60 to "nach 1 h", 90 to "nach 1.5 h", 120 to "nach 2 h").forEach { (m, l) ->
+                        FilterChip(selected = prefs.reminderRepeatMinutes == m, onClick = { prefs.reminderRepeatMinutes = m }, label = { Text(l) })
+                    }
+                }
+                if (prefs.reminderRepeatMinutes > 0) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1, 2, 3).forEach { n ->
+                        FilterChip(selected = prefs.reminderRepeatMax == n, onClick = { prefs.reminderRepeatMax = n }, label = { Text("höchstens ${n}x") })
+                    }
+                }
+                Muted("Nie nach Licht aus. Wochen-Gewohnheiten melden sich nicht mehr, sobald das Wochenziel erreicht ist.")
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Morgen- und Abend-Check-in")
+                        Muted("Morgens ${prefs.morningBriefingOffset} Min nach dem Aufstehen, abends 20 Min vor der Abendroutine")
+                    }
+                    Switch(checked = prefs.briefingsEnabled, onCheckedChange = {
+                        prefs.briefingsEnabled = it
+                        scope.launch(Dispatchers.IO) { Scheduler.scheduleReminders(ctx) }
+                    })
+                }
+            }
+        }
+        item {
+            Section(title = "Schrittziel") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(5000, 6000, 7000, 8000, 10000).forEach { g ->
+                        FilterChip(selected = prefs.stepGoal == g, onClick = { prefs.stepGoal = g; prefs.stepGoalChecked = Time.todayStr() },
+                            label = { Text("${g / 1000}k") })
+                    }
+                }
+                Text("Steigt automatisch bis", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(10000, 12000, 15000).forEach { g ->
+                        FilterChip(selected = prefs.stepGoalMax == g, onClick = { prefs.stepGoalMax = g }, label = { Text("${g / 1000}k") })
+                    }
+                }
+                Muted("Aktuell ${prefs.stepGoal} Schritte. Wer an 10 von 14 Tagen das Ziel schafft, bekommt 500 dazu.")
             }
         }
         item {

@@ -46,6 +46,7 @@ import ch.akh.kompass.data.MoodEntry
 import ch.akh.kompass.data.SnusEntry
 import ch.akh.kompass.plan.Auto
 import ch.akh.kompass.plan.Engine
+import ch.akh.kompass.plan.QuickLog
 import ch.akh.kompass.plan.HabitItem
 import ch.akh.kompass.plan.PhasePlan
 import ch.akh.kompass.ui.Bad
@@ -57,6 +58,7 @@ import ch.akh.kompass.ui.Section
 import ch.akh.kompass.ui.Stat
 import ch.akh.kompass.ui.go
 import ch.akh.kompass.ui.prefsState
+import ch.akh.kompass.util.Health
 import ch.akh.kompass.util.Kalender
 import ch.akh.kompass.util.ScreenTime
 import ch.akh.kompass.util.Time
@@ -72,6 +74,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
     val e = remember { Engine.get(ctx) }
     val dao = e.dao
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val today = Time.today()
     val todayStr = today.toString()
     val from = minOf(Time.weekStart(today), today.minusDays(1)).toString()
@@ -85,6 +88,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
     val focusMin by dao.focusMinutesOn(todayStr).collectAsState(initial = 0)
     val mood by dao.moodOn(todayStr).collectAsState(initial = null)
 
+    val tick = ch.akh.kompass.ui.rememberTicker()
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             e.updateSleepShift()
@@ -93,11 +97,18 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
             Scheduler.rescheduleAll(ctx)
         }
     }
+    val steps by produceState<Long?>(null, tick) {
+        value = withContext(Dispatchers.IO) {
+            Health.syncAll(ctx)
+            if (Health.available(ctx) && Health.hasAll(ctx)) Health.stepsOn(ctx, today) else null
+        }
+    }
+    val subs by dao.substancesBetweenFlow(Time.startOfDay(today), Time.endOfDay(today)).collectAsState(initial = emptyList())
 
     val status by produceState<ch.akh.kompass.plan.PhaseStatus?>(null, logs, prefs.phase, snusToday) {
         value = withContext(Dispatchers.IO) { e.phaseStatus() }
     }
-    val usage by produceState<ch.akh.kompass.util.DayUsage?>(null) {
+    val usage by produceState<ch.akh.kompass.util.DayUsage?>(null, tick, prefs.extraEntertainment, prefs.excludedEntertainment, prefs.screenSource) {
         value = withContext(Dispatchers.IO) { if (ScreenTime.hasPermission(ctx)) ScreenTime.day(ctx) else null }
     }
     val events by produceState(emptyList<ch.akh.kompass.util.CalEvent>()) {
@@ -118,9 +129,72 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
 
     Screen(title = "Heute") {
         item {
+            val dailyAll = items.filter { it.daily }
+            val doneAll = dailyAll.count { h -> logs.any { it.key == h.key && it.date == todayStr } }
             Column {
-                Text("$greeting${if (prefs.name.isNotBlank()) ", ${prefs.name}" else ""}", style = MaterialTheme.typography.headlineMedium)
-                Muted("${Time.nice(today)} · Phase ${phase.index}: ${phase.name} · Tag ${status?.daysIn ?: 1}")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("$greeting${if (prefs.name.isNotBlank()) ", ${prefs.name}" else ""}", style = MaterialTheme.typography.headlineMedium)
+                    Muted("${Time.nice(today)} · Phase ${phase.index}: ${phase.name} · Tag ${status?.daysIn ?: 1}")
+                }
+                ch.akh.kompass.ui.Ring(
+                    if (dailyAll.isEmpty()) 0f else doneAll.toFloat() / dailyAll.size,
+                    "$doneAll/${dailyAll.size}", size = 64.dp,
+                )
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = dailyAll.isNotEmpty() && doneAll == dailyAll.size,
+                enter = androidx.compose.animation.scaleIn(androidx.compose.animation.core.spring(dampingRatio = 0.5f)) + androidx.compose.animation.fadeIn(),
+            ) {
+                Section(highlight = true, modifier = Modifier.padding(top = 12.dp)) {
+                    Text("Alles für heute erledigt.", style = MaterialTheme.typography.titleMedium, color = Good)
+                    Muted("Genau so baut sich das neue Normal auf. Der Rest des Tages gehört dir.")
+                }
+            }
+            }
+        }
+
+        // ---------- Check-in ----------
+        val minute = LocalTime.now().let { it.hour * 60 + it.minute }
+        val sinceWake = ((minute - prefs.currentWake) % 1440 + 1440) % 1440
+        val untilLights = ((e.lightsOut() - prefs.currentWake) % 1440 + 1440) % 1440
+        val briefing = when {
+            !prefs.briefingsEnabled -> null
+            sinceWake < 6 * 60 && !prefs.briefingDone("morgen", todayStr) -> "morgen"
+            sinceWake >= untilLights - 120 && sinceWake < untilLights + 180 && !prefs.briefingDone("abend", todayStr) -> "abend"
+            else -> null
+        }
+        if (briefing != null) item(key = "briefing") {
+            Section(
+                title = if (briefing == "morgen") "Morgen-Check-in" else "Abend-Check-in",
+                subtitle = if (briefing == "morgen") "Schlaf, Stimmung, das eine Ding für heute" else "Konsum, Lesen, offene Gewohnheiten, Freude",
+                onClick = { nav.go("briefing/$briefing") },
+                highlight = true,
+            ) {
+                Button(onClick = { nav.go("briefing/$briefing") }, modifier = Modifier.fillMaxWidth()) { Text("Starten, dauert eine Minute") }
+            }
+        }
+        if (prefs.intention(todayStr).isNotBlank()) item(key = "intention") {
+            Section(title = "Heute zählt") { Text(prefs.intention(todayStr), style = MaterialTheme.typography.titleMedium) }
+        }
+
+        // ---------- Schnell eintragen ----------
+        item(key = "quick") {
+            Section(title = "Schnell eintragen") {
+                val coffee = subs.count { it.type == "Kaffee" }
+                val energy = subs.count { it.type == "Energy" }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { undo.run("Kaffee eingetragen") { QuickLog.substance(e, "Kaffee") } }, modifier = Modifier.weight(1f)) {
+                        Text("Kaffee${if (coffee > 0) " ($coffee)" else ""}", maxLines = 1)
+                    }
+                    FilledTonalButton(onClick = { undo.run("Energy eingetragen") { QuickLog.substance(e, "Energy") } }, modifier = Modifier.weight(1f)) {
+                        Text("Energy${if (energy > 0) " ($energy)" else ""}", maxLines = 1)
+                    }
+                    FilledTonalButton(onClick = { undo.run("Beutel eingetragen") { QuickLog.pouch(e) } }, modifier = Modifier.weight(1f)) {
+                        Text("Snus ($snusToday)", maxLines = 1)
+                    }
+                }
+                Muted("Alles Weitere im Abend-Check-in. Jeder Eintrag lässt sich unten mit \"Rückgängig\" zurücknehmen.")
             }
         }
 
@@ -171,6 +245,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                         scope.launch {
                             val lvl = withContext(Dispatchers.IO) { e.wake().also { Scheduler.rescheduleAll(ctx) } }
                             wakeShown = lvl
+                            undo.offer("Guten Morgen, Aufwachzeit eingetragen") { e.undoWake(); Scheduler.rescheduleAll(ctx) }
                         }
                     }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.WbSunny, null)
@@ -179,7 +254,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                     }
                 } else {
                     FilledTonalButton(onClick = {
-                        scope.launch(Dispatchers.IO) { e.goodNight() }
+                        undo.run("Gute Nacht eingetragen") { e.goodNight() }
                     }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.Bedtime, null)
                         Spacer(Modifier.width(8.dp))
@@ -203,9 +278,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                 Spacer(Modifier.height(8.dp))
                 daily.forEach { h ->
                     HabitRow(h, logs, todayStr, e) { lvl ->
-                        scope.launch(Dispatchers.IO) {
-                            if (lvl == 0) dao.deleteHabit(todayStr, h.key) else dao.upsertHabit(HabitLog(todayStr, h.key, lvl))
-                        }
+                        undo.run(if (lvl == 0) "${h.title}: wieder offen" else "${h.title}: erledigt") { QuickLog.habit(e, todayStr, h.key, lvl) }
                     }
                 }
                 if (weekly.isNotEmpty()) {
@@ -213,9 +286,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                     Text("Diese Woche", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     weekly.forEach { h ->
                         HabitRow(h, logs, todayStr, e) { lvl ->
-                            scope.launch(Dispatchers.IO) {
-                                if (lvl == 0) dao.deleteHabit(todayStr, h.key) else dao.upsertHabit(HabitLog(todayStr, h.key, lvl))
-                            }
+                            undo.run(if (lvl == 0) "${h.title}: wieder offen" else "${h.title}: erledigt") { QuickLog.habit(e, todayStr, h.key, lvl) }
                         }
                     }
                 }
@@ -242,9 +313,30 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
-                        scope.launch(Dispatchers.IO) { dao.insertSnus(SnusEntry(at = System.currentTimeMillis(), type = 0)); e.syncAuto() }
+                        undo.run("Beutel eingetragen") { QuickLog.pouch(e) }
                     }, modifier = Modifier.weight(1f)) { Text("+1 Beutel") }
                     OutlinedButton(onClick = { nav.go("craving") }, modifier = Modifier.weight(1f)) { Text("Craving") }
+                }
+            }
+        }
+
+        // ---------- Schritte ----------
+        if (steps != null && !prefs.habitDisabled("schritte")) item(key = "steps") {
+            val st = steps ?: 0L
+            Section(title = "Schritte", subtitle = "Von der Fitbit über Health Connect") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Stat("Heute", "%,d".format(java.util.Locale("de", "CH"), st), Modifier.weight(1f),
+                        sub = "Ziel ${"%,d".format(java.util.Locale("de", "CH"), prefs.stepGoal)}",
+                        color = if (st >= prefs.stepGoal) Good else MaterialTheme.colorScheme.onSurface)
+                    val left = (prefs.stepGoal - st).coerceAtLeast(0)
+                    if (left > 0) Muted("Noch ${"%,d".format(java.util.Locale("de", "CH"), left)}\n≈ ${left / 110} Min gehen")
+                    else Text("Geschafft", color = Good, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(8.dp))
+                Progress(st.toFloat() / prefs.stepGoal, color = Good)
+                if (prefs.stepNote.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Muted(prefs.stepNote)
                 }
             }
         }
@@ -303,9 +395,10 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                     }
                 } else {
                     QuickMood { mo, en, jo ->
-                        scope.launch(Dispatchers.IO) {
+                        undo.run("Stimmung gespeichert") {
                             dao.upsertMood(MoodEntry(todayStr, mo, en, jo))
                             e.syncAuto()
+                            suspend { dao.deleteMood(todayStr); dao.deleteHabit(todayStr, "stimmung") }
                         }
                     }
                 }

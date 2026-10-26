@@ -37,8 +37,13 @@ object WidgetPrefs {
     const val FOCUS = "w_focus"
     const val SCREEN = "w_screen"
     const val SLEEP = "w_sleep"
+    const val COFFEE = "w_coffee"
+    const val BRIEF = "w_brief"
 
-    val defaults = mapOf(HABITS to true, HIDE_DONE to false, WEEKLY to true, SNUS to true, FOCUS to true, SCREEN to true, SLEEP to true)
+    val defaults = mapOf(
+        HABITS to true, HIDE_DONE to false, WEEKLY to true, SNUS to true, FOCUS to true, SCREEN to true,
+        SLEEP to true, COFFEE to true, BRIEF to true,
+    )
 
     fun get(context: Context, key: String): Boolean = Prefs.get(context).sp.getBoolean(key, defaults[key] ?: true)
     fun set(context: Context, key: String, v: Boolean) = Prefs.get(context).sp.edit().putBoolean(key, v).apply()
@@ -55,6 +60,10 @@ class KompassWidget : AppWidgetProvider() {
 
     companion object {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val TEXT = 0xFFE8E9F3.toInt()
+        val BAD = 0xFFFF6B6B.toInt()
+        val GOOD = 0xFF34D399.toInt()
+        val ON_GOOD = 0xFF04241A.toInt()
 
         /** Von überall aufrufbar, wenn sich Daten geändert haben. */
         fun refresh(context: Context) {
@@ -62,9 +71,9 @@ class KompassWidget : AppWidgetProvider() {
             scope.launch { runCatching { update(app) } }
         }
 
-        private fun action(context: Context, action: String, rc: Int): PendingIntent =
+        private fun action(context: Context, action: String, rc: Int, type: String? = null): PendingIntent =
             PendingIntent.getBroadcast(
-                context, rc, Intent(context, ActionReceiver::class.java).setAction(action),
+                context, rc, Intent(context, ActionReceiver::class.java).setAction(action).apply { if (type != null) putExtra("type", type) },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
@@ -95,6 +104,16 @@ class KompassWidget : AppWidgetProvider() {
             val focus = e.dao.focusMinutesOnce(todayStr)
             val sleeping = e.dao.openSleep() != null
             val usage = if (WidgetPrefs.get(context, WidgetPrefs.SCREEN) && ScreenTime.hasPermission(context)) ScreenTime.day(context) else null
+            val coffee = e.dao.substancesBetween(Time.startOfDay(today), Time.endOfDay(today)).count { it.type == "Kaffee" }
+            val nowMin = Time.minuteOfDay(System.currentTimeMillis())
+            val sinceWake = ((nowMin - p.currentWake) % 1440 + 1440) % 1440
+            val untilLights = ((e.lightsOut() - p.currentWake) % 1440 + 1440) % 1440
+            val brief = when {
+                !p.briefingsEnabled -> null
+                sinceWake < 6 * 60 && !p.briefingDone("morgen", todayStr) -> "morgen"
+                sinceWake >= untilLights - 120 && sinceWake < untilLights + 180 && !p.briefingDone("abend", todayStr) -> "abend"
+                else -> null
+            }
 
             for (id in ids) {
                 val v = RemoteViews(context.packageName, R.layout.widget_kompass)
@@ -106,21 +125,37 @@ class KompassWidget : AppWidgetProvider() {
 
                 // Kennzahlen
                 val showSnus = WidgetPrefs.get(context, WidgetPrefs.SNUS)
+                val showCoffee = WidgetPrefs.get(context, WidgetPrefs.COFFEE)
                 val showFocus = WidgetPrefs.get(context, WidgetPrefs.FOCUS)
                 val showScreen = WidgetPrefs.get(context, WidgetPrefs.SCREEN)
                 v.setViewVisibility(R.id.w_snus_box, if (showSnus) View.VISIBLE else View.GONE)
+                v.setViewVisibility(R.id.w_coffee_box, if (showCoffee) View.VISIBLE else View.GONE)
+                v.setViewVisibility(R.id.w_quick, if (showSnus || showCoffee) View.VISIBLE else View.GONE)
                 v.setViewVisibility(R.id.w_focus_box, if (showFocus) View.VISIBLE else View.GONE)
                 v.setViewVisibility(R.id.w_screen_box, if (showScreen) View.VISIBLE else View.GONE)
-                v.setViewVisibility(R.id.w_stats, if (showSnus || showFocus || showScreen) View.VISIBLE else View.GONE)
+                v.setViewVisibility(R.id.w_stats, if (showFocus || showScreen) View.VISIBLE else View.GONE)
                 v.setTextViewText(R.id.w_snus, if (limit != null) "$snus / $limit" else "$snus")
-                v.setTextColor(R.id.w_snus, if (limit != null && snus > limit) 0xFFE5675C.toInt() else 0xFFE3E6EA.toInt())
+                v.setTextColor(R.id.w_snus, if (limit != null && snus > limit) BAD else TEXT)
                 v.setOnClickPendingIntent(R.id.w_snus_add, action(context, ActionReceiver.SNUS_ADD, 302))
+                v.setOnClickPendingIntent(R.id.w_snus_minus, action(context, ActionReceiver.SNUS_UNDO, 308))
+                v.setViewVisibility(R.id.w_snus_minus, if (snus > 0) View.VISIBLE else View.GONE)
+                v.setTextViewText(R.id.w_coffee, "$coffee")
+                v.setOnClickPendingIntent(R.id.w_coffee_add, action(context, ActionReceiver.SUBSTANCE_ADD, 309, "Kaffee"))
+                v.setOnClickPendingIntent(R.id.w_coffee_minus, action(context, ActionReceiver.SUBSTANCE_UNDO, 310, "Kaffee"))
+                v.setViewVisibility(R.id.w_coffee_minus, if (coffee > 0) View.VISIBLE else View.GONE)
+                v.setOnClickPendingIntent(R.id.w_coffee_box, open(context, "substances", 311))
+                val showBrief = brief != null && WidgetPrefs.get(context, WidgetPrefs.BRIEF)
+                v.setViewVisibility(R.id.w_brief_btn, if (showBrief) View.VISIBLE else View.GONE)
+                if (brief != null) {
+                    v.setTextViewText(R.id.w_brief_btn, if (brief == "morgen") "Morgen-Check-in" else "Abend-Check-in")
+                    v.setOnClickPendingIntent(R.id.w_brief_btn, open(context, "briefing/$brief", 312))
+                }
                 v.setOnClickPendingIntent(R.id.w_snus_box, open(context, "snus", 303))
                 v.setTextViewText(R.id.w_focus, Time.dur(focus))
                 v.setOnClickPendingIntent(R.id.w_focus_box, open(context, "focus", 304))
                 v.setTextViewText(R.id.w_screen, usage?.let { Time.durMs(it.entertainment) } ?: "–")
                 val over = usage != null && p.phase >= 3 && usage.entertainment > p.entertainmentBudget * 60_000L
-                v.setTextColor(R.id.w_screen, if (over) 0xFFE5675C.toInt() else 0xFFE3E6EA.toInt())
+                v.setTextColor(R.id.w_screen, if (over) BAD else TEXT)
                 v.setOnClickPendingIntent(R.id.w_screen_box, open(context, "screen", 305))
 
                 // Schlaf-Knopf
@@ -198,12 +233,12 @@ class WidgetService : RemoteViewsService() {
             val level = logs.firstOrNull { it.key == h.key && it.date == today }?.level ?: 0
             val week = logs.count { it.key == h.key && it.level >= 1 }
             v.setTextViewText(R.id.h_title, h.title + if (!h.daily) "  ($week/${h.perWeek})" else "")
-            v.setTextColor(R.id.h_title, if (level > 0) 0xFF5CC27A.toInt() else 0xFFE3E6EA.toInt())
+            v.setTextColor(R.id.h_title, if (level > 0) KompassWidget.GOOD else KompassWidget.TEXT)
             v.setTextViewText(R.id.h_sub, if (level == 2) h.full else "Mindestens: ${h.min}")
             v.setInt(R.id.h_min, "setBackgroundResource", if (level == 1) R.drawable.chip_on else R.drawable.chip_off)
             v.setInt(R.id.h_full, "setBackgroundResource", if (level == 2) R.drawable.chip_on else R.drawable.chip_off)
-            v.setTextColor(R.id.h_min, if (level == 1) 0xFF0E2A16.toInt() else 0xFFE3E6EA.toInt())
-            v.setTextColor(R.id.h_full, if (level == 2) 0xFF0E2A16.toInt() else 0xFFE3E6EA.toInt())
+            v.setTextColor(R.id.h_min, if (level == 1) KompassWidget.ON_GOOD else KompassWidget.TEXT)
+            v.setTextColor(R.id.h_full, if (level == 2) KompassWidget.ON_GOOD else KompassWidget.TEXT)
             v.setOnClickFillInIntent(R.id.h_min, Intent().putExtra("key", h.key).putExtra("level", 1))
             v.setOnClickFillInIntent(R.id.h_full, Intent().putExtra("key", h.key).putExtra("level", 2))
             v.setOnClickFillInIntent(R.id.h_text, Intent().putExtra("key", h.key).putExtra("level", 2))

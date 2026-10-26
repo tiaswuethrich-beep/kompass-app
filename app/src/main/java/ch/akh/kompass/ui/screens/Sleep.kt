@@ -60,6 +60,7 @@ fun SleepScreen(onBack: () -> Unit) {
     val prefs = prefsState()
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val entries by e.dao.recentSleep(60).collectAsState(initial = emptyList())
     var pick by remember { mutableStateOf<String?>(null) }
     var edit by remember { mutableStateOf<SleepEntry?>(null) }
@@ -137,6 +138,21 @@ fun SleepScreen(onBack: () -> Unit) {
             }
         }
 
+        item { HealthConnectCard() }
+
+        item {
+            val days = (13 downTo 0).map { Time.today().minusDays(it.toLong()) }
+            val byDay = withBed.associateBy { it.wakeDate }
+            val hours = days.map { d -> byDay[d.toString()]?.let { (it.wakeAt!! - it.bedAt!!) / 3_600_000f } ?: 0f }
+            Section(title = "Schlafdauer, 14 Nächte", subtitle = "Stunden, gestrichelt: dein Schlafbedarf") {
+                ch.akh.kompass.ui.BarChart(
+                    hours, days.map { if (it.dayOfWeek == java.time.DayOfWeek.MONDAY || it == days.last()) Time.short(it) else "" },
+                    goal = prefs.sleepNeedMinutes / 60f,
+                    colorFor = { _, v -> if (v > 0 && v < prefs.sleepNeedMinutes / 60f - 1f) ch.akh.kompass.ui.Warn else androidx.compose.ui.graphics.Color.Unspecified },
+                )
+            }
+        }
+
         item {
             Section(title = "Letzte 7 Nächte") {
                 Row {
@@ -180,8 +196,9 @@ fun SleepScreen(onBack: () -> Unit) {
                             "${s.bedAt?.let { Time.hm(it) } ?: "?"} bis ${s.wakeAt?.let { Time.hm(it) } ?: "läuft"}" +
                                 if (s.bedAt != null && s.wakeAt != null) " · ${Time.durMs(s.wakeAt - s.bedAt)}" else "",
                         )
+                        if (s.note.isNotBlank()) Muted(s.note)
                     }
-                    IconButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.deleteSleep(s) } }) {
+                    IconButton(onClick = { undo.run("Nacht gelöscht") { e.dao.deleteSleep(s); suspend { e.dao.upsertSleep(s) } } }) {
                         Icon(Icons.Filled.Delete, "Löschen")
                     }
                 }
@@ -205,7 +222,14 @@ fun SleepScreen(onBack: () -> Unit) {
     }
 
     edit?.let { s -> SleepEditDialog(s, onDismiss = { edit = null }) { updated ->
-        scope.launch(Dispatchers.IO) { e.dao.upsertSleep(updated) }
+        val before = s
+        undo.run("Nacht gespeichert") {
+            e.dao.upsertSleep(updated)
+            suspend {
+                if (before.id == 0L) e.dao.sleepOn(updated.wakeDate)?.let { e.dao.deleteSleep(it) } else e.dao.upsertSleep(before)
+                Unit
+            }
+        }
         edit = null
     } }
 }

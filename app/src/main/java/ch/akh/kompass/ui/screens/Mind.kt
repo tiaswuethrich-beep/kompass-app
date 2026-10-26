@@ -75,6 +75,7 @@ fun BooksScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val books by e.dao.books().collectAsState(initial = emptyList())
     val year = Time.today().year
     val reading by e.dao.readingSince(Time.today().minusDays(27).toString()).collectAsState(initial = emptyList())
@@ -114,7 +115,7 @@ fun BooksScreen(onBack: () -> Unit) {
                             if (b.status == 0) OutlinedButton(onClick = {
                                 scope.launch(Dispatchers.IO) { e.dao.upsertBook(b.copy(status = 1, startedAt = Time.todayStr())) }
                             }) { Text("Anfangen") }
-                            IconButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.deleteBook(b) } }) { Icon(Icons.Filled.Delete, "Löschen") }
+                            IconButton(onClick = { undo.run("Buch gelöscht") { e.dao.deleteBook(b); suspend { e.dao.upsertBook(b) } } }) { Icon(Icons.Filled.Delete, "Löschen") }
                         }
                     }
                 }
@@ -170,14 +171,7 @@ fun BooksScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     val newPage = page.toIntOrNull() ?: b.current
-                    val read = (newPage - b.current).coerceAtLeast(0)
-                    val finished = b.pages in 1..newPage
-                    scope.launch(Dispatchers.IO) {
-                        e.dao.insertReading(ReadingSession(bookId = b.id, date = Time.todayStr(), minutes = minutes.toIntOrNull() ?: 0, pages = read))
-                        e.dao.upsertBook(b.copy(current = newPage, status = if (finished) 2 else 1,
-                            finishedAt = if (finished) Time.todayStr() else b.finishedAt, startedAt = b.startedAt ?: Time.todayStr()))
-                        e.syncAuto()
-                    }
+                    undo.run("Lesen eingetragen") { ch.akh.kompass.plan.QuickLog.reading(e, b, newPage, minutes.toIntOrNull() ?: 0) }
                     session = null
                 }) { Text("Speichern") }
             },
@@ -194,6 +188,7 @@ fun FocusScreen(onBack: () -> Unit) {
     val prefs = prefsState()
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val today = Time.todayStr()
     val sessions by e.dao.focusSince(Time.today().minusDays(6).toString()).collectAsState(initial = emptyList())
     val todayMin = sessions.filter { it.date == today }.sumOf { it.minutes }
@@ -220,6 +215,7 @@ fun FocusScreen(onBack: () -> Unit) {
         val end = System.currentTimeMillis() + min * 60_000L
         prefs.focusEndsAt = end
         Scheduler.scheduleFocusEnd(ctx, end)
+        ch.akh.kompass.util.Dnd.startFocus(ctx)
         now = System.currentTimeMillis()
     }
 
@@ -242,7 +238,10 @@ fun FocusScreen(onBack: () -> Unit) {
                     Text("${left / 60}:${"%02d".format(left % 60)}", fontSize = 56.sp, fontWeight = FontWeight.Bold)
                     if (prefs.focusLabel.isNotBlank()) Muted(prefs.focusLabel)
                     Spacer(Modifier.height(8.dp))
-                    Muted("Handy umdrehen, Nicht-stören an. Die App meldet sich, wenn der Block fertig ist.")
+                    Muted(
+                        if (ch.akh.kompass.util.Dnd.granted(ctx)) "\"Nicht stören\" ist an und geht am Ende von selbst wieder aus. Handy umdrehen."
+                        else "Handy umdrehen, Nicht-stören an. Die App meldet sich, wenn der Block fertig ist.",
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
                             // Abbrechen: die bisherige Zeit zählt trotzdem, wenn es mindestens 10 Minuten waren.
@@ -250,9 +249,11 @@ fun FocusScreen(onBack: () -> Unit) {
                             val done = ((System.currentTimeMillis() - start) / 60_000L).toInt()
                             prefs.focusEndsAt = 0
                             Scheduler.scheduleFocusEnd(ctx, 0)
-                            if (done >= 10) scope.launch(Dispatchers.IO) {
-                                e.dao.insertFocus(FocusSession(date = today, startedAt = start, minutes = done, label = prefs.focusLabel))
+                            ch.akh.kompass.util.Dnd.endFocus(ctx)
+                            if (done >= 10) undo.run("$done Minuten Fokus gespeichert") {
+                                val id = e.dao.insertFocus(FocusSession(date = today, startedAt = start, minutes = done, label = prefs.focusLabel))
                                 e.syncAuto()
+                                suspend { e.dao.deleteFocusId(id) }
                             }
                         }) { Text("Beenden") }
                     }
@@ -282,9 +283,12 @@ fun FocusScreen(onBack: () -> Unit) {
             }
         }
         items(sessions.take(20), key = { it.id }) { s ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${Time.weekday(Time.dayOf(s.startedAt))} ${Time.hm(s.startedAt)}", Modifier.weight(1f))
                 Muted("${s.minutes} min${if (s.label.isNotBlank()) " · ${s.label}" else ""}")
+                IconButton(onClick = { undo.run("Fokus-Block gelöscht") { e.dao.deleteFocus(s); suspend { e.dao.insertFocus(s); Unit } } }) {
+                    Icon(Icons.Filled.Delete, "Löschen")
+                }
             }
         }
     }
@@ -297,6 +301,7 @@ fun MoodScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val today = Time.todayStr()
     val moods by e.dao.moodSince(Time.today().minusDays(29).toString()).collectAsState(initial = emptyList())
     val reviews by e.dao.reviews().collectAsState(initial = emptyList())
@@ -388,6 +393,7 @@ fun HabitsScreen(onBack: () -> Unit) {
     val prefs = prefsState()
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val customs by e.dao.customHabits().collectAsState(initial = emptyList())
     val logs by e.dao.habitsSinceFlow(Time.today().minusDays(27).toString()).collectAsState(initial = emptyList())
     var timeFor by remember { mutableStateOf<String?>(null) }
@@ -399,8 +405,11 @@ fun HabitsScreen(onBack: () -> Unit) {
         FloatingActionButton(onClick = { add = true }) { Icon(Icons.Filled.Add, "Eigene Gewohnheit") }
     }) {
         item { Muted("Antippen der Uhrzeit ändert die Erinnerung. Mit dem Schalter kannst du eine Gewohnheit pausieren.") }
-        val all = e.builtInItems() + customs.map { e.customItem(it) }
+        val everything = e.builtInItems() + customs.map { e.customItem(it) }
+        val optional = everything.filter { it.key in ch.akh.kompass.data.Prefs.DEFAULT_OFF }
+        val all = everything - optional.toSet() + optional
         items(all, key = { it.key }) { h ->
+            if (h == optional.firstOrNull()) Text("Zum Einschalten, wenn du Lust hast", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
             val done28 = logs.count { it.key == h.key && it.level >= 1 }
             val active = if (h.custom != null) h.custom.active else !prefs.habitDisabled(h.key)
             Section(title = h.title, subtitle = if (h.daily) "täglich" else "${h.perWeek}x pro Woche${h.weekday?.let { " (${Time.weekday(Time.today().with(it))})" } ?: ""}") {
@@ -421,7 +430,7 @@ fun HabitsScreen(onBack: () -> Unit) {
                         else prefs.setHabitDisabled(h.key, !on)
                         resched()
                     })
-                    if (h.custom != null) IconButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.deleteCustom(h.custom) } }) {
+                    if (h.custom != null) IconButton(onClick = { val c = h.custom; undo.run("Gewohnheit gelöscht") { e.dao.deleteCustom(c); suspend { e.dao.upsertCustom(c) } } }) {
                         Icon(Icons.Filled.Delete, "Löschen")
                     }
                 }

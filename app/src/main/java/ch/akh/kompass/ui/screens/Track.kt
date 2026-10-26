@@ -29,6 +29,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.navigation.NavHostController
 import ch.akh.kompass.ui.Screen
 import ch.akh.kompass.ui.go
@@ -47,21 +51,28 @@ private val trackTiles = listOf(
     Tile("mood", "Stimmung", "Tageswerte und Wochenrückblick", Icons.Filled.Mood),
     Tile("substances", "Konsum", "Koffein, Alkohol, Weed", Icons.Filled.LocalCafe),
     Tile("habits", "Gewohnheiten", "Alle, eigene, Erinnerungen", Icons.Filled.Checklist),
+    Tile("briefing/morgen", "Morgen-Check-in", "Schlaf, Stimmung, Tagesziel", Icons.Filled.WbSunny),
+    Tile("briefing/abend", "Abend-Check-in", "Konsum, Lesen, Freude", Icons.Filled.NightsStay),
 )
 
 @Composable
 fun TrackScreen(nav: NavHostController) {
     Screen(title = "Tracker") {
-        trackTiles.chunked(2).forEach { row ->
+        trackTiles.chunked(2).forEachIndexed { r, row ->
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { t ->
+                    row.forEachIndexed { c, t ->
+                        val tint = ch.akh.kompass.ui.chartColor(r * 2 + c)
                         Card(
-                            modifier = Modifier.weight(1f).height(124.dp).clickable { nav.go(t.route) },
+                            modifier = Modifier.weight(1f).height(128.dp).clickable { nav.go(t.route) },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            shape = MaterialTheme.shapes.large,
                         ) {
                             Column(Modifier.padding(14.dp)) {
-                                Icon(t.icon, null, tint = MaterialTheme.colorScheme.primary)
+                                androidx.compose.foundation.layout.Box(
+                                    Modifier.size(38.dp).background(tint.copy(alpha = 0.18f), androidx.compose.foundation.shape.CircleShape),
+                                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                                ) { Icon(t.icon, null, tint = tint, modifier = Modifier.size(22.dp)) }
                                 Spacer(Modifier.height(8.dp))
                                 Text(t.title, style = MaterialTheme.typography.titleMedium)
                                 Text(t.sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

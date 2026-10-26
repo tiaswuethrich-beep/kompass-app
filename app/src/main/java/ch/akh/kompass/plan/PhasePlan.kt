@@ -19,7 +19,7 @@ data class Phase(
 enum class Anchor { WAKE, LIGHTS_OUT, FIXED }
 
 /** Welche Daten eine Gewohnheit automatisch abhaken. */
-enum class Auto { NONE, WAKE, MOOD, GYM, CARDIO_RUN, SWIM, NATURE, MARCH, READ, FOCUS, NICOTINE_FREE }
+enum class Auto { NONE, STEPS, WAKE, MOOD, GYM, CARDIO_RUN, SWIM, NATURE, MARCH, READ, FOCUS, NICOTINE_FREE }
 
 data class HabitDef(
     val key: String,
@@ -160,6 +160,18 @@ object PhasePlan {
             minText = { "1 Seite" }, fullText = byPhase(1 to "10 Min", 3 to "20 Min", 5 to "30 Min"),
             anchor = Anchor.LIGHTS_OUT, offset = { -25 }, auto = Auto.READ,
             why = "Eine Seite zählt. Meistens werden es mehr.",
+        ),
+        HabitDef(
+            "schritte", "Schritte", "Körper", 1,
+            minText = { "Hälfte vom Tagesziel" }, fullText = { "Tagesziel erreicht" },
+            anchor = Anchor.FIXED, offset = { 18 * 60 + 30 }, auto = Auto.STEPS,
+            why = "Gehen ist das einfachste Ausdauertraining und hilft beim Einschlafen. Das Ziel steigt langsam mit.",
+        ),
+        HabitDef(
+            "gitarre", "Gitarre", "Freude", 0, perWeek = { 3 },
+            minText = { "5 Min, ein Akkord" }, fullText = { "20 Min üben" },
+            anchor = Anchor.FIXED, offset = { 20 * 60 },
+            why = "Etwas, das einfach Freude machen darf. Kein Leistungsziel. Musik machen tut dem Belohnungssystem gut.",
         ),
         HabitDef(
             "snusfenster", "Snus-freie Zeitfenster", "Nikotin", 1, endPhase = 3,

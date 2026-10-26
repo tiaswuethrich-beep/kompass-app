@@ -15,9 +15,23 @@ import ch.akh.kompass.data.Prefs
 import ch.akh.kompass.plan.Engine
 import java.time.LocalDate
 
-data class AppUsage(val pkg: String, val label: String, val ms: Long, val entertainment: Boolean)
+data class AppUsage(val pkg: String, val label: String, val ms: Long, val entertainment: Boolean, val category: String = "Andere", val count: Int = 0)
 
-data class DayUsage(val total: Long, val entertainment: Long, val apps: List<AppUsage>)
+data class Session(val pkg: String, val start: Long, val end: Long)
+
+data class DayUsage(
+    val total: Long,
+    val entertainment: Long,
+    val apps: List<AppUsage>,
+    val sessions: List<Session> = emptyList(),
+    /** Minuten pro Stunde des Tages (24 Werte). */
+    val perHour: List<Float> = List(24) { 0f },
+    /** Zeit pro Kategorie, absteigend. */
+    val byCategory: List<Pair<String, Long>> = emptyList(),
+    /** Summe nur aus den Ereignissen bzw. nur aus der Android-Statistik, zum Vergleichen. */
+    val eventsTotal: Long = 0,
+    val systemTotal: Long = 0,
+)
 
 /** Liest die echte Bildschirmzeit über den Nutzungszugriff von Android. */
 object ScreenTime {
@@ -50,10 +64,13 @@ object ScreenTime {
             .map { it.activityInfo.packageName }.toSet()
     }
 
+    private fun csv(s: String) = s.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
     fun isEntertainment(context: Context, pkg: String): Boolean {
+        val p = Prefs.get(context)
+        if (pkg in csv(p.excludedEntertainment)) return false
+        if (pkg in csv(p.extraEntertainment)) return true
         if (pkg in knownEntertainment) return true
-        val extra = Prefs.get(context).extraEntertainment.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-        if (pkg in extra) return true
         return try {
             val ai = context.packageManager.getApplicationInfo(pkg, 0)
             ai.category == ApplicationInfo.CATEGORY_GAME || ai.category == ApplicationInfo.CATEGORY_VIDEO
@@ -69,28 +86,38 @@ object ScreenTime {
         pkg
     }
 
-    /** Vordergrundzeit pro App zwischen from und to (Millisekunden). */
-    fun usage(context: Context, from: Long, to: Long): Map<String, Long> {
-        if (!hasPermission(context)) return emptyMap()
-        val usm = context.getSystemService(UsageStatsManager::class.java) ?: return emptyMap()
+    /**
+     * Alle Nutzungs-Sitzungen zwischen from und to, direkt aus den Android-Ereignissen.
+     * Gezählt wird die sichtbare Zeit einer App (von "geöffnet" bis "nicht mehr sichtbar"),
+     * so wie Android sie für die eigene Bildschirmzeit nutzt. Bildschirm aus beendet alles.
+     */
+    fun sessions(context: Context, from: Long, to: Long): List<Session> {
+        if (!hasPermission(context)) return emptyList()
+        val usm = context.getSystemService(UsageStatsManager::class.java) ?: return emptyList()
         val end = minOf(to, System.currentTimeMillis())
-        if (end <= from) return emptyMap()
+        if (end <= from) return emptyList()
         val events = usm.queryEvents(from - 12 * 3600_000L, end)
-        // Pro App die gerade sichtbaren Activities. Eine App zählt, solange mindestens eine davon offen ist.
-        // Wie bei Digital Wellbeing: andere Apps (Overlays, Dialoge) beenden die Zeit einer App nicht.
-        val openActs = HashMap<String, MutableSet<String>>()
+        val hasStop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val visible = HashMap<String, MutableSet<String>>()
         val since = HashMap<String, Long>()
-        val total = HashMap<String, Long>()
+        val out = ArrayList<Session>()
         val e = UsageEvents.Event()
         fun add(pkg: String, s: Long, at: Long) {
             val a = maxOf(s, from)
             val b = minOf(at, end)
-            if (b > a) total[pkg] = (total[pkg] ?: 0L) + (b - a)
+            if (b > a) out += Session(pkg, a, b)
+        }
+        fun hide(pkg: String, act: String, at: Long) {
+            val set = visible[pkg] ?: return
+            if (set.remove(act) && set.isEmpty()) {
+                since.remove(pkg)?.let { add(pkg, it, at) }
+                visible.remove(pkg)
+            }
         }
         fun closeAll(at: Long) {
             for ((pkg, s) in since) add(pkg, s, at)
             since.clear()
-            openActs.clear()
+            visible.clear()
         }
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
@@ -98,34 +125,122 @@ object ScreenTime {
             val act = e.className ?: pkg
             when (e.eventType) {
                 1 -> { // ACTIVITY_RESUMED
-                    val set = openActs.getOrPut(pkg) { mutableSetOf() }
+                    val set = visible.getOrPut(pkg) { mutableSetOf() }
                     if (set.isEmpty()) since[pkg] = e.timeStamp
                     set += act
                 }
-                2, 23 -> { // ACTIVITY_PAUSED, ACTIVITY_STOPPED
-                    val set = openActs[pkg] ?: continue
-                    if (set.remove(act) && set.isEmpty()) {
-                        since.remove(pkg)?.let { add(pkg, it, e.timeStamp) }
-                        openActs.remove(pkg)
-                    }
-                }
+                2 -> if (!hasStop) hide(pkg, act, e.timeStamp) // ACTIVITY_PAUSED, nur vor Android 10
+                23, 24 -> hide(pkg, act, e.timeStamp) // ACTIVITY_STOPPED, ACTIVITY_DESTROYED
                 16, 26 -> closeAll(e.timeStamp) // Bildschirm aus, Gerät aus
             }
         }
         closeAll(end)
         val skip = launcherPackages(context) + context.packageName + "com.android.systemui"
-        // Wie Digital Wellbeing: nur Apps mit Symbol im App-Menü zählen, keine Systemdienste.
         val pm = context.packageManager
-        return total.filterKeys { it !in skip && pm.getLaunchIntentForPackage(it) != null }
+        val launchable = HashMap<String, Boolean>()
+        return out.filter { s ->
+            s.pkg !in skip && launchable.getOrPut(s.pkg) { pm.getLaunchIntentForPackage(s.pkg) != null }
+        }.sortedBy { it.start }
     }
 
-    fun day(context: Context, d: LocalDate = Time.today()): DayUsage {
-        val map = usage(context, Time.startOfDay(d), Time.endOfDay(d))
-        val apps = map.entries.map { (pkg, ms) ->
-            AppUsage(pkg, label(context, pkg), ms, isEntertainment(context, pkg))
-        }.sortedByDescending { it.ms }
-        return DayUsage(apps.sumOf { it.ms }, apps.filter { it.entertainment }.sumOf { it.ms }, apps)
+    /** Sichtbare Zeit pro App zwischen from und to (Millisekunden), aus den Ereignissen. */
+    fun usage(context: Context, from: Long, to: Long): Map<String, Long> =
+        sessions(context, from, to).groupBy { it.pkg }.mapValues { (_, l) -> l.sumOf { it.end - it.start } }
+
+    /**
+     * Die Tageswerte, die Android selbst speichert (dieselbe Quelle wie viele Bildschirmzeit-Anzeigen).
+     * Nur Tages-Pakete, die an diesem Tag beginnen, damit nichts vom Vortag mitgezählt wird.
+     */
+    fun systemUsage(context: Context, d: LocalDate): Map<String, Long> {
+        if (!hasPermission(context)) return emptyMap()
+        val usm = context.getSystemService(UsageStatsManager::class.java) ?: return emptyMap()
+        val start = Time.startOfDay(d)
+        val end = minOf(Time.endOfDay(d), System.currentTimeMillis())
+        val out = HashMap<String, Long>()
+        val list = try {
+            usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+        } catch (_: Exception) {
+            null
+        } ?: return emptyMap()
+        for (s in list) {
+            // Android beginnt die Tages-Pakete nicht immer genau um Mitternacht, darum etwas Spielraum.
+            if (s.firstTimeStamp < start - 3 * 3600_000L || s.firstTimeStamp >= end) continue
+            val ms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) maxOf(s.totalTimeVisible, s.totalTimeInForeground) else s.totalTimeInForeground
+            if (ms > 0) out[s.packageName] = (out[s.packageName] ?: 0L) + ms
+        }
+        val skip = launcherPackages(context) + context.packageName + "com.android.systemui"
+        val pm = context.packageManager
+        return out.filterKeys { it !in skip && pm.getLaunchIntentForPackage(it) != null }
     }
+
+    /** Tagesübersicht: Apps, Kategorien und Verteilung über die Stunden. */
+    fun day(context: Context, d: LocalDate = Time.today()): DayUsage {
+        val from = Time.startOfDay(d)
+        val to = Time.endOfDay(d)
+        val ss = sessions(context, from, to)
+        val events = ss.groupBy { it.pkg }.mapValues { (_, l) -> l.sumOf { it.end - it.start } }
+        val counts = ss.groupingBy { it.pkg }.eachCount()
+        val source = Prefs.get(context).screenSource
+        val system = if (source == 1) emptyMap() else systemUsage(context, d)
+        val merged = when (source) {
+            1 -> events
+            2 -> system
+            else -> (events.keys + system.keys).associateWith { maxOf(events[it] ?: 0L, system[it] ?: 0L) }
+        }
+        val apps = merged.filterValues { it >= 1000L }.map { (pkg, ms) ->
+            AppUsage(pkg, label(context, pkg), ms, isEntertainment(context, pkg), category(context, pkg), counts[pkg] ?: 0)
+        }.sortedByDescending { it.ms }
+        val perHour = FloatArray(24)
+        for (s in ss) {
+            var t = s.start
+            while (t < s.end) {
+                val h = Time.minuteOfDay(t) / 60
+                val next = minOf(s.end, Time.startOfDay(Time.dayOf(t)) + (h + 1) * 3600_000L)
+                if (next <= t) break
+                perHour[h] += (next - t) / 60_000f
+                t = next
+            }
+        }
+        val byCat = apps.groupBy { it.category }.map { (c, l) -> c to l.sumOf { it.ms } }.sortedByDescending { it.second }
+        return DayUsage(
+            total = apps.sumOf { it.ms },
+            entertainment = apps.filter { it.entertainment }.sumOf { it.ms },
+            apps = apps, sessions = ss, perHour = perHour.toList(), byCategory = byCat,
+            eventsTotal = events.values.sum(), systemTotal = system.values.sum(),
+        )
+    }
+
+    fun category(context: Context, pkg: String): String {
+        knownCategory[pkg]?.let { return it }
+        return try {
+            when (context.packageManager.getApplicationInfo(pkg, 0).category) {
+                ApplicationInfo.CATEGORY_GAME -> "Games"
+                ApplicationInfo.CATEGORY_VIDEO -> "Videos"
+                ApplicationInfo.CATEGORY_SOCIAL -> "Social Media"
+                ApplicationInfo.CATEGORY_AUDIO -> "Musik"
+                ApplicationInfo.CATEGORY_NEWS -> "News"
+                ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Produktiv"
+                ApplicationInfo.CATEGORY_MAPS -> "Unterwegs"
+                else -> "Andere"
+            }
+        } catch (_: Exception) {
+            "Andere"
+        }
+    }
+
+    private val knownCategory = mapOf(
+        "com.google.android.youtube" to "Videos", "com.netflix.mediaclient" to "Videos", "tv.twitch.android.app" to "Videos",
+        "com.disney.disneyplus" to "Videos", "com.amazon.avod.thirdpartyclient" to "Videos",
+        "com.instagram.android" to "Social Media", "com.zhiliaoapp.musically" to "Social Media", "com.ss.android.ugc.trill" to "Social Media",
+        "com.snapchat.android" to "Social Media", "com.twitter.android" to "Social Media", "com.facebook.katana" to "Social Media",
+        "com.reddit.frontpage" to "Social Media", "com.pinterest" to "Social Media", "com.discord" to "Chats",
+        "com.whatsapp" to "Chats", "org.telegram.messenger" to "Chats", "org.thoughtcrime.securesms" to "Chats",
+        "com.google.android.apps.messaging" to "Chats", "com.spotify.music" to "Musik",
+        "com.android.chrome" to "Browser", "org.mozilla.firefox" to "Browser", "com.brave.browser" to "Browser",
+        "com.sec.android.app.sbrowser" to "Browser", "com.google.android.googlequicksearchbox" to "Browser",
+        "com.anthropic.claude" to "Produktiv", "com.openai.chatgpt" to "Produktiv",
+        "ch.sbb.mobile.android.b2c" to "Unterwegs",
+    )
 
     /** Bildschirmzeit nach "Licht aus" in der letzten Nacht. */
     fun lateLastNight(context: Context, today: LocalDate = Time.today()): Long {

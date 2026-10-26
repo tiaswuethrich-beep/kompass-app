@@ -83,12 +83,8 @@ fun GymScreen(nav: NavHostController, onBack: () -> Unit) {
         prefs.phase >= 2 -> 2
         else -> 1
     }
-    val lastTemplate = workouts.firstOrNull { it.template.startsWith("Ganzkörper") }?.template
-    val suggested = when (lastTemplate) {
-        "Ganzkörper A" -> "Ganzkörper B"
-        "Ganzkörper B" -> if (prefs.phase >= 3) "Ganzkörper C" else "Ganzkörper A"
-        else -> "Ganzkörper A"
-    }
+    val suggested = Training.next(prefs.phase, workouts.filter { it.endedAt != null }.map { it.template })
+    val rotation = Training.rotation(prefs.phase)
 
     fun start(template: String) {
         scope.launch {
@@ -113,7 +109,7 @@ fun GymScreen(nav: NavHostController, onBack: () -> Unit) {
             }
         }
         item {
-            Section(title = "Training starten", subtitle = "Vorschlag heute: $suggested") {
+            Section(title = "Training starten", subtitle = "Vorschlag heute: $suggested\nReihenfolge: ${rotation.joinToString(" → ") { it.substringBefore(":") }}") {
                 Training.templates.forEach { t ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -124,6 +120,12 @@ fun GymScreen(nav: NavHostController, onBack: () -> Unit) {
                         FilledTonalButton(onClick = { start(t.name) }) { Text("Start") }
                     }
                 }
+            }
+        }
+        item {
+            Section(title = "Ausdauer für die RS", subtitle = "Zusätzlich zum Gym, je nach Phase") {
+                Training.endurancePlan(prefs.phase).forEach { Muted("• $it") }
+                TextButton(onClick = { nav.go("cardio") }) { Text("Ausdauer eintragen") }
             }
         }
         if (exercises.isNotEmpty()) item {
@@ -155,6 +157,7 @@ fun WorkoutScreen(id: Long, nav: NavHostController, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val workout by e.dao.workout(id).collectAsState(initial = null)
     val sets by e.dao.setsOf(id).collectAsState(initial = emptyList())
+    val undo = ch.akh.kompass.ui.undo()
     val w = workout
     val template = Training.templates.firstOrNull { it.name == w?.template }
     val extra = remember { mutableStateListOf<String>() }
@@ -200,7 +203,7 @@ fun WorkoutScreen(id: Long, nav: NavHostController, onBack: () -> Unit) {
                         }
                         rest = 90
                     },
-                    onDelete = { s -> scope.launch(Dispatchers.IO) { e.dao.deleteSet(s) } },
+                    onDelete = { s -> undo.run("Satz gelöscht") { e.dao.deleteSet(s); suspend { e.dao.insertSet(s); Unit } } },
                 )
             }
         }
@@ -230,6 +233,9 @@ fun WorkoutScreen(id: Long, nav: NavHostController, onBack: () -> Unit) {
                 }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Training beenden") }
             } else if (w != null) {
                 Muted("Beendet. Dauer ${w.endedAt?.let { Time.durMs(it - w.startedAt) } ?: ""}.")
+                TextButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.upsertWorkout(w.copy(endedAt = null)) } }) {
+                    Text("Wieder öffnen")
+                }
             }
         }
     }
@@ -242,13 +248,16 @@ fun WorkoutScreen(id: Long, nav: NavHostController, onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            e.dao.deleteSetsOf(w.id)
-                            e.dao.deleteWorkout(w)
+                    undo.run("Training gelöscht") {
+                        val saved = e.dao.setsOfOnce(w.id)
+                        e.dao.deleteSetsOf(w.id)
+                        e.dao.deleteWorkout(w)
+                        suspend {
+                            e.dao.upsertWorkout(w)
+                            e.dao.insertSets(saved)
                         }
-                        onBack()
                     }
+                    onBack()
                 }) { Text("Löschen") }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Abbrechen") } },

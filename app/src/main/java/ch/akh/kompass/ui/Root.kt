@@ -1,6 +1,10 @@
 package ch.akh.kompass.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Insights
@@ -30,7 +34,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import ch.akh.kompass.MainActivity
 import ch.akh.kompass.data.Prefs
+import androidx.compose.ui.unit.dp
 import ch.akh.kompass.ui.screens.BooksScreen
+import ch.akh.kompass.ui.screens.BriefingScreen
 import ch.akh.kompass.ui.screens.CardioScreen
 import ch.akh.kompass.ui.screens.CravingScreen
 import ch.akh.kompass.ui.screens.ExerciseScreen
@@ -88,11 +94,16 @@ fun KompassRoot(activity: MainActivity) {
             activity.pendingRoute.value = null
         }
     }
+    val snackbar = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
+    val rootScope = androidx.compose.runtime.rememberCoroutineScope()
+    val undoHost = androidx.compose.runtime.remember { UndoHost(snackbar, rootScope) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalUndo provides undoHost) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar, Modifier.padding(bottom = 72.dp)) },
         bottomBar = {
             if (tabs.any { it.route == current }) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
                     tabs.forEach { t ->
                         NavigationBarItem(
                             selected = current == t.route,
@@ -111,7 +122,17 @@ fun KompassRoot(activity: MainActivity) {
             }
         },
     ) { pad ->
-        NavHost(nav, startDestination = "today", modifier = Modifier.padding(bottom = pad.calculateBottomPadding())) {
+        NavHost(
+            nav, startDestination = "today", modifier = Modifier.padding(bottom = pad.calculateBottomPadding()),
+            enterTransition = {
+                fadeIn(tween(260)) + slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300), initialOffset = { it / 6 })
+            },
+            exitTransition = { fadeOut(tween(180)) },
+            popEnterTransition = { fadeIn(tween(260)) },
+            popExitTransition = {
+                fadeOut(tween(180)) + slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(260), targetOffset = { it / 6 })
+            },
+        ) {
             val back: () -> Unit = { nav.popBackStack() }
             composable("today") { TodayScreen(nav, activity) }
             composable("plan") { PlanScreen(nav) }
@@ -136,6 +157,8 @@ fun KompassRoot(activity: MainActivity) {
             composable("mood") { MoodScreen(back) }
             composable("substances") { SubstanceScreen(back) }
             composable("habits") { HabitsScreen(back) }
+            composable("briefing/{kind}") { BriefingScreen(it.arguments?.getString("kind") ?: "morgen", back) }
         }
+    }
     }
 }

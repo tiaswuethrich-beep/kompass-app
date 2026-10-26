@@ -27,6 +27,8 @@ interface KDao {
 
     // ---------- Gewohnheiten ----------
     @Upsert suspend fun upsertHabit(h: HabitLog)
+    @Query("SELECT * FROM habit_log WHERE date = :date AND `key` = :key")
+    suspend fun habitOnce(date: String, key: String): HabitLog?
     @Query("DELETE FROM habit_log WHERE date = :date AND `key` = :key")
     suspend fun deleteHabit(date: String, key: String)
     @Query("SELECT * FROM habit_log WHERE date = :date")
@@ -46,6 +48,7 @@ interface KDao {
 
     // ---------- Snus ----------
     @Insert suspend fun insertSnus(e: SnusEntry): Long
+    @Query("DELETE FROM snus WHERE id = :id") suspend fun deleteSnusId(id: Long)
     @Query("DELETE FROM snus WHERE id = (SELECT id FROM snus WHERE type = 0 ORDER BY at DESC LIMIT 1)")
     suspend fun undoLastPouch()
     @Query("SELECT COUNT(*) FROM snus WHERE type = :type AND at >= :from AND at < :to")
@@ -62,7 +65,12 @@ interface KDao {
     suspend fun lastPouch(): Long?
 
     // ---------- Konsum ----------
-    @Insert suspend fun insertSubstance(e: SubstanceEntry)
+    @Insert suspend fun insertSubstance(e: SubstanceEntry): Long
+    @Query("DELETE FROM substance WHERE id = :id") suspend fun deleteSubstanceId(id: Long)
+    @Query("SELECT * FROM substance WHERE at >= :from AND at < :to ORDER BY at")
+    suspend fun substancesBetween(from: Long, to: Long): List<SubstanceEntry>
+    @Query("SELECT * FROM substance WHERE at >= :from AND at < :to ORDER BY at")
+    fun substancesBetweenFlow(from: Long, to: Long): Flow<List<SubstanceEntry>>
     @Query("SELECT * FROM substance WHERE at >= :from ORDER BY at DESC")
     fun substancesSince(from: Long): Flow<List<SubstanceEntry>>
     @Delete suspend fun deleteSubstance(e: SubstanceEntry)
@@ -71,6 +79,9 @@ interface KDao {
     @Insert suspend fun insertWorkout(w: Workout): Long
     @Upsert suspend fun upsertWorkout(w: Workout)
     @Delete suspend fun deleteWorkout(w: Workout)
+    @Query("SELECT * FROM set_entry WHERE workoutId = :id")
+    suspend fun setsOfOnce(id: Long): List<SetEntry>
+    @Insert suspend fun insertSets(s: List<SetEntry>)
     @Query("DELETE FROM set_entry WHERE workoutId = :id")
     suspend fun deleteSetsOf(id: Long)
     @Query("SELECT * FROM workout ORDER BY startedAt DESC")
@@ -93,7 +104,8 @@ interface KDao {
     fun loggedExercises(): Flow<List<String>>
 
     // ---------- Ausdauer ----------
-    @Insert suspend fun insertCardio(c: CardioEntry)
+    @Insert suspend fun insertCardio(c: CardioEntry): Long
+    @Query("DELETE FROM cardio WHERE id = :id") suspend fun deleteCardioId(id: Long)
     @Delete suspend fun deleteCardio(c: CardioEntry)
     @Query("SELECT * FROM cardio ORDER BY date DESC, id DESC")
     fun cardio(): Flow<List<CardioEntry>>
@@ -108,12 +120,15 @@ interface KDao {
     fun books(): Flow<List<Book>>
     @Query("SELECT * FROM book WHERE id = :id")
     suspend fun book(id: Long): Book?
-    @Insert suspend fun insertReading(r: ReadingSession)
+    @Insert suspend fun insertReading(r: ReadingSession): Long
+    @Query("DELETE FROM reading WHERE id = :id") suspend fun deleteReadingId(id: Long)
     @Query("SELECT * FROM reading WHERE date >= :from ORDER BY date")
     fun readingSince(from: String): Flow<List<ReadingSession>>
 
     // ---------- Fokus ----------
-    @Insert suspend fun insertFocus(f: FocusSession)
+    @Insert suspend fun insertFocus(f: FocusSession): Long
+    @Query("DELETE FROM focus WHERE id = :id") suspend fun deleteFocusId(id: Long)
+    @Delete suspend fun deleteFocus(f: FocusSession)
     @Query("SELECT * FROM focus WHERE date >= :from ORDER BY startedAt DESC")
     fun focusSince(from: String): Flow<List<FocusSession>>
     @Query("SELECT COALESCE(SUM(minutes), 0) FROM focus WHERE date = :day")
@@ -123,6 +138,7 @@ interface KDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertTx(t: Tx): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertTxs(t: List<Tx>): List<Long>
     @Upsert suspend fun upsertTx(t: Tx)
+    @Query("DELETE FROM tx WHERE id IN (:ids)") suspend fun deleteTxIds(ids: List<Long>)
     @Delete suspend fun deleteTx(t: Tx)
     @Query("SELECT * FROM tx WHERE date >= :from AND date < :to ORDER BY date DESC, id DESC")
     fun txBetween(from: String, to: String): Flow<List<Tx>>
@@ -135,6 +151,7 @@ interface KDao {
 
     // ---------- Stimmung ----------
     @Upsert suspend fun upsertMood(m: MoodEntry)
+    @Query("DELETE FROM mood WHERE date = :day") suspend fun deleteMood(day: String)
     @Query("SELECT * FROM mood WHERE date = :day")
     fun moodOn(day: String): Flow<MoodEntry?>
     @Query("SELECT * FROM mood WHERE date >= :from ORDER BY date")

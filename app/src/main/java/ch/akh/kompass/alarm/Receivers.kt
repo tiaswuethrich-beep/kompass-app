@@ -13,6 +13,7 @@ import ch.akh.kompass.data.HabitLog
 import ch.akh.kompass.data.SnusEntry
 import ch.akh.kompass.widget.KompassWidget
 import ch.akh.kompass.plan.Engine
+import ch.akh.kompass.util.Health
 import ch.akh.kompass.util.ScreenTime
 import ch.akh.kompass.util.Time
 import kotlinx.coroutines.CoroutineScope
@@ -77,16 +78,19 @@ class AlarmReceiver : BroadcastReceiver() {
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Scheduler.ACTION_REMIND -> runAsync { remind(context, intent.getStringExtra(Scheduler.EXTRA_KEY) ?: return@runAsync) }
+            Scheduler.ACTION_REMIND -> runAsync {
+                remind(context, intent.getStringExtra(Scheduler.EXTRA_KEY) ?: return@runAsync, intent.getIntExtra(Scheduler.EXTRA_ATTEMPT, 0))
+            }
             Scheduler.ACTION_CHECK -> runAsync {
                 ScreenTime.check(context)
+                Health.syncAll(context)
                 KompassWidget.update(context)
             }
             Scheduler.ACTION_FOCUS_END -> runAsync { focusEnd(context) }
         }
     }
 
-    private suspend fun remind(context: Context, key: String) {
+    private suspend fun remind(context: Context, key: String, attempt: Int) {
         val e = Engine.get(context)
         val today = Time.todayStr()
         val all = Scheduler.reminders(context)
@@ -94,15 +98,32 @@ class ReminderReceiver : BroadcastReceiver() {
         if (r != null) {
             if (r.habit) {
                 e.syncAuto()
-                val done = e.dao.habitsSince(today).any { it.date == today && it.key == key }
-                if (!done) {
+                if (key == "schritte") Health.syncSteps(context)
+                val logs = e.dao.habitsSince(Time.weekStart().toString())
+                val done = logs.any { it.date == today && it.key == key }
+                val item = e.activeItemsOnce().firstOrNull { it.key == key }
+                // Wochenziel schon erreicht: nicht mehr erinnern.
+                val weekDone = item != null && !item.daily && e.weekCount(logs, key) >= item.perWeek
+                if (!done && !weekDone) {
+                    val text = when (attempt) {
+                        0 -> r.text
+                        1 -> "Noch offen. Die Mindestversion reicht völlig: ${item?.min ?: r.text}"
+                        else -> "Letzte Erinnerung für heute. ${item?.min ?: ""} genügt, um die Kette zu halten."
+                    }
                     Notify.simple(
-                        context, notifId(key), Notify.CH_REMIND, r.title, r.text, "today",
+                        context, notifId(key), Notify.CH_REMIND, r.title, text, "today",
                         listOf(
                             habitAction(context, key, 1, "Mindestens erledigt"),
                             habitAction(context, key, 2, "Ganz erledigt"),
                         ),
                     )
+                    Scheduler.scheduleFollowUp(context, key, attempt + 1)
+                }
+                if (attempt > 0) return
+            } else if (key == "_morning" || key == "_evening") {
+                val kind = if (key == "_morning") "morgen" else "abend"
+                if (attempt == 0 && !e.prefs.briefingDone(kind, today)) {
+                    Notify.simple(context, notifId(key), Notify.CH_REMIND, r.title, r.text, "briefing/$kind")
                 }
             } else {
                 val actions = if (key == "_lights") {
@@ -131,6 +152,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val start = end - p.focusMinutes * 60_000L
         e.dao.insertFocus(FocusSession(date = Time.dayOf(start).toString(), startedAt = start, minutes = p.focusMinutes, label = p.focusLabel))
         p.focusEndsAt = 0
+        ch.akh.kompass.util.Dnd.endFocus(context)
         e.syncAuto()
         KompassWidget.update(context)
         Notify.simple(context, Notify.ID_FOCUS, Notify.CH_FOCUS, "Fokus-Block fertig",
@@ -158,6 +180,7 @@ class ActionReceiver : BroadcastReceiver() {
                 val key = intent.getStringExtra("key") ?: return
                 val level = intent.getIntExtra("level", 2)
                 Notify.cancel(context, ReminderReceiver.notifId(key))
+                Scheduler.cancelFollowUp(context, key)
                 runAsync {
                     e.dao.upsertHabit(HabitLog(Time.todayStr(), key, level))
                     KompassWidget.update(context)
@@ -176,6 +199,25 @@ class ActionReceiver : BroadcastReceiver() {
             SNUS_ADD -> runAsync {
                 e.dao.insertSnus(SnusEntry(at = System.currentTimeMillis(), type = 0))
                 e.syncAuto()
+                KompassWidget.update(context)
+            }
+            SNUS_UNDO -> runAsync {
+                // Nur Beutel von heute zurücknehmen, nie ältere.
+                val last = e.dao.lastPouch()
+                if (last != null && Time.dayOf(last) == Time.today()) e.dao.undoLastPouch()
+                e.syncAuto()
+                KompassWidget.update(context)
+            }
+            SUBSTANCE_ADD -> runAsync {
+                val type = intent.getStringExtra("type") ?: "Kaffee"
+                e.dao.insertSubstance(ch.akh.kompass.data.SubstanceEntry(at = System.currentTimeMillis(), type = type))
+                KompassWidget.update(context)
+            }
+            SUBSTANCE_UNDO -> runAsync {
+                val type = intent.getStringExtra("type") ?: "Kaffee"
+                val today = Time.today()
+                e.dao.substancesBetween(Time.startOfDay(today), Time.endOfDay(today)).lastOrNull { it.type == type }
+                    ?.let { e.dao.deleteSubstanceId(it.id) }
                 KompassWidget.update(context)
             }
             GOOD_NIGHT -> {
@@ -203,6 +245,9 @@ class ActionReceiver : BroadcastReceiver() {
         const val WAKE = "ch.akh.kompass.WAKE"
         const val TOGGLE = "ch.akh.kompass.TOGGLE"
         const val SNUS_ADD = "ch.akh.kompass.SNUS_ADD"
+        const val SNUS_UNDO = "ch.akh.kompass.SNUS_UNDO"
+        const val SUBSTANCE_ADD = "ch.akh.kompass.SUBSTANCE_ADD"
+        const val SUBSTANCE_UNDO = "ch.akh.kompass.SUBSTANCE_UNDO"
     }
 }
 

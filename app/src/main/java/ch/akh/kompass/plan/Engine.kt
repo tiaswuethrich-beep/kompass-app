@@ -96,13 +96,28 @@ class Engine(context: Context) {
         prefs.lastShiftCheck = today
     }
 
-    suspend fun goodNight(now: Long = System.currentTimeMillis()) {
+    /** Gibt eine Funktion zurück, die den Eintrag wieder rückgängig macht. */
+    suspend fun goodNight(now: Long = System.currentTimeMillis()): suspend () -> Unit {
         val open = dao.openSleep()
-        if (open != null && now - (open.bedAt ?: 0) < 4 * 3600_000L) {
+        return if (open != null && now - (open.bedAt ?: 0) < 4 * 3600_000L) {
             dao.upsertSleep(open.copy(bedAt = now))
+            suspend { dao.upsertSleep(open) }
         } else {
-            dao.insertSleep(SleepEntry(bedAt = now))
+            val id = dao.insertSleep(SleepEntry(bedAt = now))
+            suspend {
+                dao.openSleep()?.takeIf { it.id == id }?.let { dao.deleteSleep(it) }
+                Unit
+            }
         }
+    }
+
+    /** "Ich bin wach" zurücknehmen: Aufwachzeit entfernen und "aufstehen" austragen. */
+    suspend fun undoWake(day: LocalDate = Time.today()) {
+        val s = dao.sleepOn(day.toString())
+        if (s != null) {
+            if (s.bedAt != null) dao.upsertSleep(s.copy(wakeAt = null)) else dao.deleteSleep(s)
+        }
+        dao.deleteHabit(day.toString(), "aufstehen")
     }
 
     /** Morgens "Wach" gedrückt (oder Wecker beendet). Gibt das Level für "aufstehen" zurück. */
@@ -193,7 +208,7 @@ class Engine(context: Context) {
 
     suspend fun activeItemsOnce(): List<HabitItem> = activeItems(dao.customHabitsOnce())
 
-    private suspend fun setAuto(day: String, key: String, level: Int) {
+    suspend fun setAuto(day: String, key: String, level: Int) {
         if (level <= 0) return
         val existing = dao.habitsSince(day).firstOrNull { it.date == day && it.key == key }
         if (existing == null || existing.level < level) dao.upsertHabit(HabitLog(day, key, level))
@@ -254,7 +269,7 @@ class Engine(context: Context) {
                     val n = dao.snusCount(0, Time.startOfDay(date), Time.endOfDay(date))
                     if (n == 0) setAuto(day, h.key, 2) else dao.deleteHabit(day, h.key)
                 }
-                Auto.WAKE, Auto.NONE -> Unit
+                Auto.WAKE, Auto.NONE, Auto.STEPS -> Unit // Schritte: siehe Health.syncSteps
             }
         }
     }

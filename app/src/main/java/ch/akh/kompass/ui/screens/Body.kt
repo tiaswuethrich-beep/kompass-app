@@ -58,6 +58,7 @@ import ch.akh.kompass.data.CardioEntry
 import ch.akh.kompass.data.SnusEntry
 import ch.akh.kompass.data.SubstanceEntry
 import ch.akh.kompass.plan.Engine
+import ch.akh.kompass.plan.QuickLog
 import ch.akh.kompass.ui.Bad
 import ch.akh.kompass.ui.BarChart
 import ch.akh.kompass.ui.Good
@@ -90,6 +91,7 @@ fun CardioScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val all by e.dao.cardio().collectAsState(initial = emptyList())
     var type by remember { mutableStateOf("Joggen") }
     var minutes by remember { mutableStateOf("30") }
@@ -121,9 +123,11 @@ fun CardioScreen(onBack: () -> Unit) {
                     Spacer(Modifier.weight(1f))
                     Button(onClick = {
                         val d = if (yesterday) Time.today().minusDays(1) else Time.today()
-                        scope.launch(Dispatchers.IO) {
-                            e.dao.insertCardio(CardioEntry(date = d.toString(), type = type, minutes = minutes.toIntOrNull() ?: 0, km = km.toDoubleLenient() ?: 0.0, note = note))
+                        val c = CardioEntry(date = d.toString(), type = type, minutes = minutes.toIntOrNull() ?: 0, km = km.toDoubleLenient() ?: 0.0, note = note)
+                        undo.run("$type eingetragen") {
+                            val id = e.dao.insertCardio(c)
                             e.syncAuto(d)
+                            suspend { e.dao.deleteCardioId(id) }
                         }
                         note = ""
                     }, enabled = (minutes.toIntOrNull() ?: 0) > 0) { Text("Speichern") }
@@ -141,7 +145,7 @@ fun CardioScreen(onBack: () -> Unit) {
                     Text("${c.type} · ${Time.dur(c.minutes)}${if (c.km > 0) " · ${"%.1f".format(c.km)} km" else ""}")
                     Muted(Time.short(LocalDate.parse(c.date)) + if (c.note.isNotBlank()) " · ${c.note}" else "")
                 }
-                IconButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.deleteCardio(c) } }) { Icon(Icons.Filled.Delete, "Löschen") }
+                IconButton(onClick = { undo.run("Gelöscht") { e.dao.deleteCardio(c); suspend { e.dao.insertCardio(c); Unit } } }) { Icon(Icons.Filled.Delete, "Löschen") }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
@@ -157,6 +161,7 @@ fun SnusScreen(nav: NavHostController, onBack: () -> Unit) {
     val prefs = prefsState()
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val today = Time.today()
     val count by e.dao.snusCountFlow(0, Time.startOfDay(today), Time.endOfDay(today)).collectAsState(initial = 0)
     val perDay by e.dao.snusPerDay(Time.startOfDay(today.minusDays(29))).collectAsState(initial = emptyList())
@@ -189,7 +194,7 @@ fun SnusScreen(nav: NavHostController, onBack: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
-                        scope.launch(Dispatchers.IO) { e.dao.insertSnus(SnusEntry(at = System.currentTimeMillis())); e.syncAuto() }
+                        undo.run("Beutel eingetragen") { QuickLog.pouch(e) }
                     }, modifier = Modifier.weight(1f)) { Text("+1 Beutel") }
                     OutlinedButton(onClick = { nav.go("craving") }, modifier = Modifier.weight(1f)) { Text("Craving") }
                 }
@@ -272,6 +277,7 @@ fun CravingScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     var left by remember { mutableIntStateOf(240) }
     LaunchedEffect(left) {
         if (left > 0) {
@@ -319,13 +325,13 @@ fun CravingScreen(onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     scope.launch {
-                        withContext(Dispatchers.IO) { e.dao.insertSnus(SnusEntry(at = System.currentTimeMillis(), type = 1)) }
+                        undo.run("Craving überstanden. Stark.") { QuickLog.craving(e) }
                         onBack()
                     }
                 }, modifier = Modifier.weight(1f)) { Text("Überstanden") }
                 OutlinedButton(onClick = {
                     scope.launch {
-                        withContext(Dispatchers.IO) { e.dao.insertSnus(SnusEntry(at = System.currentTimeMillis(), type = 0)); e.syncAuto() }
+                        undo.run("Beutel eingetragen") { QuickLog.pouch(e) }
                         onBack()
                     }
                 }, modifier = Modifier.weight(1f)) { Text("Doch genommen") }
@@ -344,6 +350,7 @@ fun SubstanceScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = remember { Engine.get(ctx) }
     val scope = rememberCoroutineScope()
+    val undo = ch.akh.kompass.ui.undo()
     val since = Time.startOfDay(Time.today().minusDays(27))
     val list by e.dao.substancesSince(since).collectAsState(initial = emptyList())
     val weekStart = Time.startOfDay(Time.weekStart())
@@ -353,7 +360,7 @@ fun SubstanceScreen(onBack: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     substanceTypes.forEach { t ->
                         OutlinedButton(onClick = {
-                            scope.launch(Dispatchers.IO) { e.dao.insertSubstance(SubstanceEntry(at = System.currentTimeMillis(), type = t)) }
+                            undo.run("$t eingetragen") { QuickLog.substance(e, t) }
                         }, modifier = Modifier.weight(1f)) { Text(t, maxLines = 1) }
                     }
                 }
@@ -377,7 +384,7 @@ fun SubstanceScreen(onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(s.type, Modifier.weight(1f))
                 Muted("${Time.short(Time.dayOf(s.at))} ${Time.hm(s.at)}")
-                IconButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.deleteSubstance(s) } }) { Icon(Icons.Filled.Delete, "Löschen") }
+                IconButton(onClick = { undo.run("Gelöscht") { e.dao.deleteSubstance(s); suspend { e.dao.insertSubstance(s); Unit } } }) { Icon(Icons.Filled.Delete, "Löschen") }
             }
         }
     }

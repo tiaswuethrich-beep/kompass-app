@@ -84,6 +84,9 @@ fun FinanceScreen(onBack: () -> Unit) {
     val from = month.atDay(1).toString()
     val to = month.plusMonths(1).atDay(1).toString()
     val txs by e.dao.txBetween(from, to).collectAsState(initial = emptyList())
+    val history by e.dao.txBetween(month.minusMonths(5).atDay(1).toString(), to).collectAsState(initial = emptyList())
+    val undo = ch.akh.kompass.ui.undo()
+    var lastImport by remember { mutableStateOf<List<Long>>(emptyList()) }
     val budgets by e.dao.budgets().collectAsState(initial = emptyList())
     var add by remember { mutableStateOf(false) }
     var csvRows by remember { mutableStateOf<List<List<String>>?>(null) }
@@ -136,6 +139,49 @@ fun FinanceScreen(onBack: () -> Unit) {
                 }
             }
         }
+        if (byCat.isNotEmpty()) item {
+            Section(title = "Wohin das Geld ging") {
+                ch.akh.kompass.ui.DonutChart(
+                    byCat.map { it.key to it.value.toFloat() },
+                    center = chf(spent).replace("CHF ", ""),
+                    format = { "%.0f".format(it) },
+                )
+            }
+        }
+        if (txs.any { it.amount < 0 }) item {
+            val days = month.lengthOfMonth()
+            val perDay = (1..days).map { d ->
+                txs.filter { it.amount < 0 && java.time.LocalDate.parse(it.date).dayOfMonth <= d }.sumOf { -it.amount }.toFloat()
+            }
+            val isNow = month == YearMonth.now()
+            val shown = if (isNow) perDay.mapIndexed { i, v -> if (i + 1 <= java.time.LocalDate.now().dayOfMonth) v else null } else perDay
+            val budgetTotal = budgets.sumOf { it.monthly }.toFloat().takeIf { it > 0 }
+            Section(title = "Ausgaben im Monatsverlauf", subtitle = if (budgetTotal != null) "Gestrichelt: Summe deiner Budgets" else "Aufsummiert pro Tag") {
+                ch.akh.kompass.ui.LineChart(shown, listOf("1.", "$days."), min = 0f, goal = budgetTotal, yLabel = { "%.0f".format(it) })
+            }
+        }
+        if (history.isNotEmpty()) item {
+            val months = (5 downTo 0).map { month.minusMonths(it.toLong()) }
+            val top = history.filter { it.amount < 0 }.groupBy { it.category }.mapValues { (_, l) -> l.sumOf { -it.amount } }
+                .entries.sortedByDescending { it.value }.take(5).map { it.key }
+            val series = top + "Rest"
+            val cols = months.map { m ->
+                val inMonth = history.filter { it.amount < 0 && YearMonth.from(java.time.LocalDate.parse(it.date)) == m }
+                top.map { c -> inMonth.filter { it.category == c }.sumOf { -it.amount }.toFloat() } +
+                    inMonth.filter { it.category !in top }.sumOf { -it.amount }.toFloat()
+            }
+            val incomes = months.map { m -> history.filter { it.amount > 0 && YearMonth.from(java.time.LocalDate.parse(it.date)) == m }.sumOf { it.amount } }
+            Section(title = "Letzte 6 Monate", subtitle = "Ausgaben nach Kategorie") {
+                ch.akh.kompass.ui.StackedBarChart(
+                    cols, months.map { it.format(DateTimeFormatter.ofPattern("MMM", Locale.GERMAN)) }, series,
+                    format = { "%.0f".format(it) },
+                )
+                Spacer(Modifier.height(6.dp))
+                val avgSpent = cols.map { it.sum() }.filter { it > 0 }.let { if (it.isEmpty()) 0.0 else it.average() }
+                val avgIn = incomes.filter { it > 0 }.let { if (it.isEmpty()) 0.0 else it.average() }
+                Muted("Im Schnitt ${chf(avgSpent)} Ausgaben" + if (avgIn > 0) " und ${chf(avgIn)} Einnahmen pro Monat." else " pro Monat.")
+            }
+        }
         item {
             Section(title = "Bankdaten importieren") {
                 Muted("Im E-Banking die Buchungen des Monats als CSV exportieren und hier auswählen. Doppelte Buchungen werden erkannt.")
@@ -145,6 +191,12 @@ fun FinanceScreen(onBack: () -> Unit) {
                     Text("  CSV wählen")
                 }
                 message?.let { Muted(it) }
+                if (lastImport.isNotEmpty()) TextButton(onClick = {
+                    val ids = lastImport
+                    lastImport = emptyList()
+                    scope.launch(Dispatchers.IO) { e.dao.deleteTxIds(ids) }
+                    message = "Import rückgängig gemacht: ${ids.size} Buchungen entfernt."
+                }) { Text("Diesen Import rückgängig machen") }
             }
         }
         item {
@@ -178,14 +230,17 @@ fun FinanceScreen(onBack: () -> Unit) {
                     )
                 }
                 Text(chf(t.amount), color = if (t.amount >= 0) Good else MaterialTheme.colorScheme.onSurface)
-                IconButton(onClick = { scope.launch(Dispatchers.IO) { e.dao.deleteTx(t) } }) { Icon(Icons.Filled.Delete, "Löschen") }
+                IconButton(onClick = { undo.run("Buchung gelöscht") { e.dao.deleteTx(t); suspend { e.dao.upsertTx(t) } } }) { Icon(Icons.Filled.Delete, "Löschen") }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 
     if (add) AddTxDialog(onDismiss = { add = false }) { t ->
-        scope.launch(Dispatchers.IO) { e.dao.insertTx(t) }
+        undo.run("Buchung gespeichert") {
+            val id = e.dao.insertTx(t)
+            suspend { if (id > 0) e.dao.deleteTxIds(listOf(id)) }
+        }
         add = false
     }
 
@@ -194,7 +249,9 @@ fun FinanceScreen(onBack: () -> Unit) {
             prefs.csvMapping = mapping.encode()
             val list = Csv.toTx(rows, mapping)
             scope.launch {
-                val added = withContext(Dispatchers.IO) { e.dao.insertTxs(list).count { it > 0 } }
+                val ids = withContext(Dispatchers.IO) { e.dao.insertTxs(list).filter { it > 0 } }
+                lastImport = ids
+                val added = ids.size
                 message = "$added neue Buchungen importiert, ${list.size - added} waren schon da."
                 list.maxOfOrNull { it.date }?.let { month = YearMonth.from(java.time.LocalDate.parse(it)) }
             }
@@ -233,7 +290,7 @@ fun FinanceScreen(onBack: () -> Unit) {
             title = { Text("Kategorie") },
             text = {
                 CategoryChips(t.category) { c ->
-                    scope.launch(Dispatchers.IO) { e.dao.upsertTx(t.copy(category = c)) }
+                    undo.run("Kategorie geändert") { e.dao.upsertTx(t.copy(category = c)); suspend { e.dao.upsertTx(t) } }
                     catFor = null
                 }
             },

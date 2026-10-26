@@ -123,6 +123,16 @@ class Prefs private constructor(context: Context) {
         get() = sp.getString("extraEnt", "") ?: ""
         set(v) = edit { putString("extraEnt", v) }
 
+    /** Pakete, die ausdrücklich NICHT als Unterhaltung zählen (hat Vorrang). */
+    var excludedEntertainment: String
+        get() = sp.getString("exclEnt", "") ?: ""
+        set(v) = edit { putString("exclEnt", v) }
+
+    /** Datenquelle Bildschirmzeit: 0 automatisch (höherer Wert), 1 Ereignisse, 2 Android-Statistik. */
+    var screenSource: Int
+        get() = sp.getInt("screenSource", 0)
+        set(v) = edit { putInt("screenSource", v) }
+
     var lastBudgetWarn: String
         get() = sp.getString("lastBudgetWarn", "") ?: ""
         set(v) = edit { putString("lastBudgetWarn", v) }
@@ -132,7 +142,7 @@ class Prefs private constructor(context: Context) {
         set(v) = edit { putString("lastLateWarn", v) }
 
     // ---------- Gewohnheiten ----------
-    fun habitDisabled(key: String): Boolean = sp.getBoolean("hoff_$key", false)
+    fun habitDisabled(key: String): Boolean = sp.getBoolean("hoff_$key", key in DEFAULT_OFF)
     fun setHabitDisabled(key: String, off: Boolean) = edit { putBoolean("hoff_$key", off) }
 
     /** Eigene Erinnerungszeit pro Gewohnheit (Minuten nach Mitternacht), -1 = Standard. */
@@ -166,10 +176,66 @@ class Prefs private constructor(context: Context) {
         get() = sp.getString("focusLabel", "") ?: ""
         set(v) = edit { putString("focusLabel", v) }
 
+    // ---------- Erinnerungen ----------
+    /** Nachfassen, solange eine Gewohnheit offen ist: Abstand in Minuten (0 = aus). */
+    var reminderRepeatMinutes: Int
+        get() = sp.getInt("remRepeat", 90)
+        set(v) = edit { putInt("remRepeat", v) }
+
+    var reminderRepeatMax: Int
+        get() = sp.getInt("remRepeatMax", 2)
+        set(v) = edit { putInt("remRepeatMax", v) }
+
+    // ---------- Briefings ----------
+    var briefingsEnabled: Boolean
+        get() = sp.getBoolean("briefings", true)
+        set(v) = edit { putBoolean("briefings", v) }
+
+    /** Morgen-Check-in: Minuten nach der Aufstehzeit. */
+    var morningBriefingOffset: Int
+        get() = sp.getInt("mbOffset", 30)
+        set(v) = edit { putInt("mbOffset", v) }
+
+    /** "Das eine Ding, das heute zählt" aus dem Morgen-Check-in. */
+    fun intention(day: String): String = sp.getString("intent_$day", "") ?: ""
+    fun setIntention(day: String, v: String) = edit { putString("intent_$day", v) }
+
+    fun briefingDone(kind: String, day: String): Boolean = sp.getBoolean("bd_${kind}_$day", false)
+    fun setBriefingDone(kind: String, day: String, done: Boolean) = edit { putBoolean("bd_${kind}_$day", done) }
+
+    // ---------- Schritte und Health Connect ----------
+    var stepGoal: Int
+        get() = sp.getInt("stepGoal", 6000)
+        set(v) = edit { putInt("stepGoal", v) }
+
+    /** Obergrenze, bis zu der das Ziel automatisch steigt. */
+    var stepGoalMax: Int
+        get() = sp.getInt("stepGoalMax", 10000)
+        set(v) = edit { putInt("stepGoalMax", v) }
+
+    var stepGoalChecked: String
+        get() = sp.getString("stepGoalChecked", "") ?: ""
+        set(v) = edit { putString("stepGoalChecked", v) }
+
+    var stepNote: String
+        get() = sp.getString("stepNote", "") ?: ""
+        set(v) = edit { putString("stepNote", v) }
+
+    var healthLastSync: Long
+        get() = sp.getLong("healthSync", 0L)
+        set(v) = edit { putLong("healthSync", v) }
+
+    /** Fitbit-Schlaf automatisch übernehmen. */
+    var healthSleepAuto: Boolean
+        get() = sp.getBoolean("healthSleep", true)
+        set(v) = edit { putBoolean("healthSleep", v) }
+
     fun bump() { _version.value = _version.value + 1 }
 
     companion object {
         const val FILE = "kompass_prefs"
+        /** Gewohnheiten, die man selbst einschalten muss. */
+        val DEFAULT_OFF = setOf("gitarre")
         @Volatile private var instance: Prefs? = null
         fun get(context: Context): Prefs =
             instance ?: synchronized(this) {

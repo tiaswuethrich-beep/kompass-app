@@ -28,6 +28,7 @@ object Scheduler {
     const val ACTION_FOCUS_END = "ch.akh.kompass.FOCUS_END"
     const val EXTRA_KEY = "key"
     const val EXTRA_SNOOZE = "snooze"
+    const val EXTRA_ATTEMPT = "attempt"
 
     private const val RC_WAKE = 1000
     private const val RC_SNOOZE = 1001
@@ -111,6 +112,18 @@ object Scheduler {
             "_lights", "Licht aus",
             "Tipp auf \"Gute Nacht\", damit dein Schlaf gezählt wird.", e.lightsOut(), habit = false,
         )
+        if (p.briefingsEnabled) {
+            list += Reminder(
+                "_morning", "Morgen-Check-in",
+                "Eine Minute: Wie hast du geschlafen, wie geht's dir, was zählt heute?",
+                (p.currentWake + p.morningBriefingOffset) % 1440, habit = false,
+            )
+            list += Reminder(
+                "_evening", "Abend-Check-in",
+                "Kurz eintragen, was heute war: Kaffee, Snus, Lesen, Freude. Dann ab in die Abendroutine.",
+                ((e.routineStart() - 20) % 1440 + 1440) % 1440, habit = false,
+            )
+        }
         if (p.phase >= 2) {
             list += Reminder(
                 "_review", "Wochenrückblick",
@@ -156,6 +169,38 @@ object Scheduler {
         (old - keys).forEach { am(context).cancel(remindIntent(context, it)) }
         list.forEach { scheduleOne(context, it) }
         p.sp.edit().putStringSet(SCHEDULED_KEYS, keys).apply()
+    }
+
+    private fun followUpIntent(context: Context, key: String, attempt: Int): PendingIntent {
+        val i = Intent(context, ReminderReceiver::class.java).setAction(ACTION_REMIND)
+            .putExtra(EXTRA_KEY, key).putExtra(EXTRA_ATTEMPT, attempt)
+        return PendingIntent.getBroadcast(context, 6000 + (key.hashCode() and 0xFFFF), i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /**
+     * Nachfassen: Wenn eine Gewohnheit nach der Erinnerung noch offen ist, kommt später nochmals eine.
+     * Nie in der Nacht und nie nach Beginn der Abendroutine (ausser bei Gewohnheiten der Abendroutine selbst).
+     */
+    fun scheduleFollowUp(context: Context, key: String, attempt: Int) {
+        val e = Engine.get(context)
+        val p = e.prefs
+        if (p.reminderRepeatMinutes <= 0 || attempt > p.reminderRepeatMax) return
+        val at = System.currentTimeMillis() + p.reminderRepeatMinutes * 60_000L
+        val m = Time.minuteOfDay(at)
+        val lo = e.lightsOut()
+        val sinceWake = ((m - p.currentWake) % 1440 + 1440) % 1440
+        val untilLights = ((lo - p.currentWake) % 1440 + 1440) % 1440
+        if (sinceWake >= untilLights || Time.dayOf(at) != Time.today()) return
+        val pi = followUpIntent(context, key, attempt)
+        try {
+            am(context).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun cancelFollowUp(context: Context, key: String) {
+        am(context).cancel(followUpIntent(context, key, 0))
     }
 
     /** Prüft alle 30 Minuten Bildschirm-Budget und späte Nutzung. */

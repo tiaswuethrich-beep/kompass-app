@@ -23,6 +23,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import ch.akh.kompass.ui.DonutChart
+import ch.akh.kompass.ui.RankBar
+import ch.akh.kompass.ui.StackedBarChart
+import ch.akh.kompass.ui.chartColor
+import ch.akh.kompass.ui.rememberTicker
 import ch.akh.kompass.plan.Engine
 import ch.akh.kompass.plan.PhasePlan
 import ch.akh.kompass.ui.Bad
@@ -42,21 +55,31 @@ import kotlinx.coroutines.withContext
 
 // ======================= Bildschirmzeit =======================
 
+private val categoryOrder = listOf("Videos", "Games", "Social Media", "Chats", "Browser", "Musik", "Produktiv", "News", "Unterwegs", "Andere")
+
+fun categoryColor(c: String): androidx.compose.ui.graphics.Color = chartColor(categoryOrder.indexOf(c).let { if (it < 0) categoryOrder.size - 1 else it })
+
 @Composable
 fun ScreenTimeScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val prefs = prefsState()
     var refresh by remember { mutableIntStateOf(0) }
+    val tick = rememberTicker()
     val has = ScreenTime.hasPermission(ctx)
+    var loadedAt by remember { mutableLongStateOf(0L) }
     val days = (6 downTo 0).map { Time.today().minusDays(it.toLong()) }
-    val week by produceState<List<DayUsage>?>(null, refresh, prefs.extraEntertainment) {
+    val week by produceState<List<DayUsage>?>(null, refresh, tick, prefs.extraEntertainment, prefs.excludedEntertainment, prefs.screenSource) {
         value = withContext(Dispatchers.IO) { if (has) days.map { ScreenTime.day(ctx, it) } else null }
+        loadedAt = System.currentTimeMillis()
     }
-    val late by produceState(0L, refresh) {
+    val late by produceState(0L, refresh, tick) {
         value = withContext(Dispatchers.IO) { if (has) ScreenTime.lateLastNight(ctx) else 0L }
     }
+    var openApp by remember { mutableStateOf<String?>(null) }
 
-    Screen(title = "Bildschirmzeit", onBack = onBack) {
+    Screen(title = "Bildschirmzeit", onBack = onBack, actions = {
+        IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Neu laden") }
+    }) {
         if (!has) {
             item {
                 Section(title = "Zugriff fehlt") {
@@ -75,24 +98,54 @@ fun ScreenTimeScreen(onBack: () -> Unit) {
         }
         val today = w.last()
         item {
-            Section(title = "Heute") {
+            Section(title = "Heute", subtitle = "Stand ${Time.hm(loadedAt)}, aktualisiert sich jede Minute") {
                 Row {
                     Stat("Gesamt", Time.durMs(today.total), Modifier.weight(1f))
                     Stat("Games und Videos", Time.durMs(today.entertainment), Modifier.weight(1f),
                         color = if (today.entertainment > prefs.entertainmentBudget * 60_000L) Bad else MaterialTheme.colorScheme.onSurface)
                 }
                 Spacer(Modifier.height(8.dp))
-                Stat("Nach Licht aus (letzte Nacht)", Time.durMs(late), color = if (late > 15 * 60_000L) Bad else Good)
+                Row {
+                    Stat("Nach Licht aus", Time.durMs(late), Modifier.weight(1f), sub = "letzte Nacht", color = if (late > 15 * 60_000L) Bad else Good)
+                    Stat("Geöffnet", "${today.sessions.size}x", Modifier.weight(1f), sub = "Sitzungen heute")
+                }
             }
         }
         item {
-            Section(title = "Letzte 7 Tage", subtitle = "Stunden Games und Videos, gestrichelt: Budget") {
-                BarChart(
-                    w.map { it.entertainment / 3_600_000f }, days.map { Time.weekday(it) },
+            Section(title = "Kategorien heute") {
+                DonutChart(
+                    today.byCategory.map { it.first to it.second / 60_000f },
+                    center = Time.durMs(today.total),
+                    format = { Time.dur(it.toInt()) },
+                    colorOf = { if (it == "Rest") chartColor(7) else categoryColor(it) },
+                )
+            }
+        }
+        item {
+            Section(title = "Über den Tag verteilt", subtitle = "Minuten pro Stunde") {
+                val lo = ch.akh.kompass.plan.Engine.get(ctx).lightsOut()
+                BarChart(today.perHour, (0..23).map { if (it % 3 == 0) "$it" else "" }, height = 110.dp,
+                    colorFor = { h, _ ->
+                        val loH = lo / 60
+                        val wakeH = prefs.currentWake / 60
+                        val night = if (loH > wakeH) (h >= loH || h < wakeH) else (h in loH until wakeH)
+                        if (night) Bad else androidx.compose.ui.graphics.Color.Unspecified
+                    })
+                Muted("Rot: Stunden zwischen Licht aus und Aufstehen.")
+            }
+        }
+        item {
+            val cats = categoryOrder.filter { c -> w.any { d -> d.byCategory.any { it.first == c && it.second > 0 } } }
+            Section(title = "Letzte 7 Tage nach Kategorie", subtitle = "Stunden pro Tag, gestrichelt: Budget Games und Videos") {
+                StackedBarChart(
+                    w.map { d -> cats.map { c -> (d.byCategory.firstOrNull { it.first == c }?.second ?: 0L) / 3_600_000f } },
+                    days.map { Time.weekday(it) }, cats,
                     goal = prefs.entertainmentBudget / 60f,
+                    colorOf = { categoryColor(it) },
+                    format = { String.format("%.1f h", it) },
                 )
                 Spacer(Modifier.height(8.dp))
-                Muted("Gesamt im Schnitt: ${Time.durMs(w.sumOf { it.total } / 7)} pro Tag")
+                Muted("Schnitt: ${Time.durMs(w.sumOf { it.total } / 7)} gesamt, ${Time.durMs(w.sumOf { it.entertainment } / 7)} Games und Videos pro Tag")
             }
         }
         item {
@@ -107,20 +160,49 @@ fun ScreenTimeScreen(onBack: () -> Unit) {
             }
         }
         item {
-            Section(title = "Apps heute", subtitle = "Schalter = zählt als Unterhaltung") {
+            Section(title = "Apps heute", subtitle = "Schalter: zählt als Unterhaltung. Tippen zeigt die Sitzungen.") {
                 val extra = prefs.extraEntertainment.split(',').filter { it.isNotBlank() }.toSet()
-                today.apps.take(25).forEach { a ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(a.label)
-                            Muted(Time.durMs(a.ms))
-                        }
+                val excl = prefs.excludedEntertainment.split(',').filter { it.isNotBlank() }.toSet()
+                val top = today.apps.firstOrNull()?.ms?.coerceAtLeast(1L) ?: 1L
+                today.apps.take(30).forEach { a ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        RankBar(
+                            a.label, Time.durMs(a.ms), a.ms.toFloat() / top, categoryColor(a.category),
+                            Modifier.weight(1f).clickable { openApp = if (openApp == a.pkg) null else a.pkg },
+                            sub = "${a.category}${if (a.count > 0) " · ${a.count}x geöffnet" else ""}",
+                        )
+                        Spacer(Modifier.width(8.dp))
                         Switch(checked = a.entertainment, onCheckedChange = { on ->
+                            // Ein = sicher Unterhaltung, Aus = sicher nicht. Gilt auch für bekannte Apps wie YouTube.
                             prefs.extraEntertainment = (if (on) extra + a.pkg else extra - a.pkg).joinToString(",")
+                            prefs.excludedEntertainment = (if (on) excl - a.pkg else excl + a.pkg).joinToString(",")
                             refresh++
                         })
                     }
+                    if (openApp == a.pkg) {
+                        val ss = today.sessions.filter { it.pkg == a.pkg }
+                        Column(Modifier.padding(start = 8.dp, bottom = 6.dp)) {
+                            if (ss.isEmpty()) Muted("Keine einzelnen Sitzungen gefunden, Wert stammt aus der Android-Statistik.")
+                            ss.takeLast(20).reversed().forEach { s ->
+                                Text("${Time.hm(s.start)} bis ${Time.hm(s.end)} · ${Time.durMs(s.end - s.start)}",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                 }
+            }
+        }
+        item {
+            Section(title = "Datenquelle", subtitle = "Falls die Zahlen nicht mit deinem Handy übereinstimmen") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0 to "Automatisch", 1 to "Ereignisse", 2 to "Android-Statistik").forEach { (v, l) ->
+                        FilterChip(selected = prefs.screenSource == v, onClick = { prefs.screenSource = v }, label = { Text(l) })
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Muted("Heute laut Ereignissen (jedes Öffnen und Schliessen einer App): ${Time.durMs(today.eventsTotal)}")
+                Muted("Heute laut Android-Statistik: ${if (prefs.screenSource == 1) "nicht geladen" else Time.durMs(today.systemTotal)}")
+                Muted("Automatisch nimmt pro App den höheren Wert, damit nichts fehlt. Vergleich mit Einstellungen > Digital Wellbeing und nimm die Quelle, die passt.")
             }
         }
     }

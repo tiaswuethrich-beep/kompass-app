@@ -1,5 +1,24 @@
 package ch.akh.kompass.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +56,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -94,15 +115,25 @@ fun Section(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onClick: (() -> Unit)? = null,
+    highlight: Boolean = false,
     trailing: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
+    val shape = MaterialTheme.shapes.large
     Card(
-        modifier = modifier.fillMaxWidth().let { if (onClick != null) it.clickable(onClick = onClick) else it },
+        modifier = modifier.fillMaxWidth()
+            .let { if (highlight) it.border(1.5.dp, Aurora, shape) else it }
+            .clip(shape)
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = MaterialTheme.shapes.large,
+        shape = shape,
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(
+            Modifier
+                .let { if (highlight) it.background(AuroraSoft) else it }
+                .padding(16.dp)
+                .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
+        ) {
             if (title != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -122,7 +153,13 @@ fun Section(
 fun Stat(label: String, value: String, modifier: Modifier = Modifier, sub: String? = null, color: Color = MaterialTheme.colorScheme.onSurface) {
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        AnimatedContent(
+            targetState = value,
+            transitionSpec = { (fadeIn(tween(220)) + slideInVertically { it / 3 }) togetherWith fadeOut(tween(150)) },
+            label = "stat",
+        ) { v ->
+            Text(v, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -133,9 +170,10 @@ fun Muted(text: String, modifier: Modifier = Modifier) =
 
 @Composable
 fun Progress(fraction: Float, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
+    val animated by animateFloatAsState(fraction.coerceIn(0f, 1f), spring(stiffness = Spring.StiffnessLow), label = "progress")
     LinearProgressIndicator(
-        progress = { fraction.coerceIn(0f, 1f) },
-        modifier = modifier.fillMaxWidth().height(8.dp),
+        progress = { animated },
+        modifier = modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
         color = color,
         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         drawStopIndicator = {},
@@ -157,6 +195,8 @@ fun BarChart(
     val grid = MaterialTheme.colorScheme.outlineVariant
     val goalColor = MaterialTheme.colorScheme.secondary
     val max = (values.maxOrNull() ?: 0f).coerceAtLeast(goal ?: 0f).coerceAtLeast(1f) * 1.1f
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { grow.animateTo(1f, tween(700)) }
     Column(modifier.fillMaxWidth()) {
         Canvas(Modifier.fillMaxWidth().height(height)) {
             val n = values.size.coerceAtLeast(1)
@@ -164,11 +204,12 @@ fun BarChart(
             val bw = slot * 0.62f
             drawLine(grid, Offset(0f, size.height), Offset(size.width, size.height), 2f)
             values.forEachIndexed { i, v ->
-                val h = size.height * (v / max)
+                val h = size.height * (v / max) * grow.value
                 val c = colorFor(i, v).takeIf { it != Color.Unspecified } ?: base
                 drawRoundRect(
-                    c, Offset(i * slot + (slot - bw) / 2, size.height - h), Size(bw, h),
-                    cornerRadius = CornerRadius(6f, 6f),
+                    Brush.verticalGradient(listOf(c, c.copy(alpha = 0.55f)), startY = size.height - h, endY = size.height),
+                    Offset(i * slot + (slot - bw) / 2, size.height - h), Size(bw, h),
+                    cornerRadius = CornerRadius(10f, 10f),
                 )
             }
             if (goal != null) {
@@ -254,12 +295,12 @@ fun LineChart(
 @Composable
 fun Ring(fraction: Float, label: String, modifier: Modifier = Modifier, size: Dp = 96.dp) {
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
-    val c = MaterialTheme.colorScheme.primary
+    val animated by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(900), label = "ring")
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.width(size).height(size)) {
-            val s = Stroke(width = 14f)
+            val s = Stroke(width = 16f, cap = StrokeCap.Round)
             drawArc(track, 0f, 360f, false, style = s)
-            drawArc(c, -90f, 360f * fraction.coerceIn(0f, 1f), false, style = s)
+            drawArc(Brush.sweepGradient(listOf(Violet, Teal, Good, Violet)), -90f, 360f * animated, false, style = s)
         }
         Text(label, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
     }
@@ -297,3 +338,162 @@ fun TextInput(value: String, onChange: (String) -> Unit, label: String, modifier
 }
 
 fun String.toDoubleLenient(): Double? = replace(',', '.').toDoubleOrNull()
+
+/** Feste Farben für Kategorien, gut unterscheidbar in hell und dunkel. */
+val ChartPalette = listOf(
+    Color(0xFF8B7CFF), Color(0xFF2DD4BF), Color(0xFF60A5FA), Color(0xFFFF7A85),
+    Color(0xFF34D399), Color(0xFFF472B6), Color(0xFFFB923C), Color(0xFF94A3B8),
+)
+
+fun chartColor(i: Int): Color = ChartPalette[i % ChartPalette.size]
+
+/** Ring-Diagramm mit Legende. Werte werden auf die grössten Einträge reduziert, der Rest heisst "Andere". */
+@Composable
+fun DonutChart(
+    entries: List<Pair<String, Float>>,
+    modifier: Modifier = Modifier,
+    center: String = "",
+    format: (Float) -> String = { it.toInt().toString() },
+    maxSlices: Int = 6,
+    colorOf: ((String) -> Color)? = null,
+) {
+    val sorted = entries.filter { it.second > 0f }.sortedByDescending { it.second }
+    val shown = if (sorted.size > maxSlices) {
+        sorted.take(maxSlices - 1) + ("Rest" to sorted.drop(maxSlices - 1).sumOf { it.second.toDouble() }.toFloat())
+    } else sorted
+    val total = shown.sumOf { it.second.toDouble() }.toFloat()
+    if (total <= 0f) {
+        Muted("Noch keine Daten.")
+        return
+    }
+    val track = MaterialTheme.colorScheme.surfaceContainer
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { grow.animateTo(1f, tween(800)) }
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(Modifier.width(132.dp).height(132.dp)) {
+                val stroke = Stroke(width = size.minDimension * 0.2f)
+                val inset = stroke.width / 2
+                var start = -90f
+                shown.forEachIndexed { i, (name, v) ->
+                    val sweep = 360f * v / total * grow.value
+                    drawArc(
+                        colorOf?.invoke(name) ?: chartColor(i), start, sweep, false,
+                        topLeft = Offset(inset, inset), size = Size(size.width - 2 * inset, size.height - 2 * inset), style = stroke,
+                    )
+                    // feine Trennlinie zwischen den Stücken
+                    drawArc(track, start + sweep - 0.8f, 0.8f, false,
+                        topLeft = Offset(inset, inset), size = Size(size.width - 2 * inset, size.height - 2 * inset), style = stroke)
+                    start += sweep
+                }
+            }
+            Text(center, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            shown.forEachIndexed { i, (name, v) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(Modifier.width(10.dp).height(10.dp)) { drawCircle(colorOf?.invoke(name) ?: chartColor(i)) }
+                    Spacer(Modifier.width(6.dp))
+                    Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${format(v)} · ${(v * 100 / total).toInt()} %", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** Gestapelte Balken: pro Spalte mehrere Teile (z. B. Kategorien pro Tag). */
+@Composable
+fun StackedBarChart(
+    columns: List<List<Float>>,
+    labels: List<String>,
+    series: List<String>,
+    modifier: Modifier = Modifier,
+    goal: Float? = null,
+    height: Dp = 160.dp,
+    colorOf: ((String) -> Color)? = null,
+    format: (Float) -> String = { it.toInt().toString() },
+) {
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    val goalColor = MaterialTheme.colorScheme.secondary
+    val max = (columns.maxOfOrNull { it.sum() } ?: 0f).coerceAtLeast(goal ?: 0f).coerceAtLeast(0.01f) * 1.1f
+    Column(modifier.fillMaxWidth()) {
+        Text(format(max / 1.1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Canvas(Modifier.fillMaxWidth().height(height)) {
+            val n = columns.size.coerceAtLeast(1)
+            val slot = size.width / n
+            val bw = slot * 0.62f
+            drawLine(grid, Offset(0f, size.height), Offset(size.width, size.height), 2f)
+            columns.forEachIndexed { i, parts ->
+                var y = size.height
+                parts.forEachIndexed { j, v ->
+                    if (v <= 0f) return@forEachIndexed
+                    val h = size.height * (v / max)
+                    drawRect(colorOf?.invoke(series.getOrElse(j) { "" }) ?: chartColor(j),
+                        Offset(i * slot + (slot - bw) / 2, y - h), Size(bw, h))
+                    y -= h
+                }
+            }
+            if (goal != null) {
+                val gy = size.height - size.height * (goal / max)
+                drawLine(goalColor, Offset(0f, gy), Offset(size.width, gy), 3f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f)))
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            labels.forEach {
+                Text(it, Modifier.weight(1f), fontSize = 10.sp, textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        // Legende
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            series.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { name ->
+                        val j = series.indexOf(name)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Canvas(Modifier.width(10.dp).height(10.dp)) { drawCircle(colorOf?.invoke(name) ?: chartColor(j)) }
+                            Spacer(Modifier.width(4.dp))
+                            Text(name, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Horizontaler Balken mit Name und Wert, für Ranglisten (Top-Apps, Kategorien). */
+@Composable
+fun RankBar(name: String, value: String, fraction: Float, color: Color, modifier: Modifier = Modifier, sub: String? = null) {
+    Column(modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        }
+        if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(3.dp))
+        Progress(fraction, color = color)
+    }
+}
+
+/** Lädt bei jeder Rückkehr in die App und dann jede Minute neu. Liefert einen Zähler als Schlüssel. */
+@Composable
+fun rememberTicker(periodMs: Long = 60_000L): Int {
+    var tick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        tick++
+        onPauseOrDispose { }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(periodMs)
+            tick++
+        }
+    }
+    return tick
+}
