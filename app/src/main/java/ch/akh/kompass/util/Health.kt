@@ -153,6 +153,21 @@ object Health {
             }
             n++
         }
+        // Aufstehzeit aus der Fitbit für "Aufstehen" verwenden, wenn noch nichts eingetragen ist.
+        val e = Engine.get(context)
+        val today = Time.todayStr()
+        val p = Prefs.get(context)
+        byDay[today]?.let { r ->
+            if (p.phase >= 1 && e.dao.habitOnce(today, "aufstehen") == null) {
+                val diff = kotlin.math.abs(Time.circularDiff(Time.minuteOfDay(r.endTime.toEpochMilli()), p.currentWake))
+                val lvl = when {
+                    diff <= 10 -> 2
+                    diff <= 30 -> 1
+                    else -> 0
+                }
+                e.setAuto(today, "aufstehen", lvl)
+            }
+        }
         Prefs.get(context).healthLastSync = System.currentTimeMillis()
         return n
     }

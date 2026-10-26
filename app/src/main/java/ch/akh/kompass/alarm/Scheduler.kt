@@ -59,7 +59,8 @@ object Scheduler {
         val pi = wakeIntent(context, false, RC_WAKE)
         val next = nextWake(context)
         val am = am(context)
-        if (next == null) {
+        // Wecker läuft über die Uhr-App: eigenen Wecker abschalten, damit nichts doppelt klingelt.
+        if (next == null || Prefs.get(context).alarmViaClock) {
             am.cancel(pi)
             return
         }

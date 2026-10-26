@@ -89,6 +89,10 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
     val mood by dao.moodOn(todayStr).collectAsState(initial = null)
 
     val tick = ch.akh.kompass.ui.rememberTicker()
+    // Wecker in der Uhr-App nachführen (geht nur, solange Kompass sichtbar ist).
+    LaunchedEffect(prefs.currentWake, prefs.alarmEnabled, prefs.alarmViaClock, tick) {
+        ch.akh.kompass.alarm.ClockAlarm.ensure(ctx)
+    }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             e.updateSleepShift()

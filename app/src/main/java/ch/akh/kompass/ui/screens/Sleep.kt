@@ -96,6 +96,27 @@ fun SleepScreen(onBack: () -> Unit) {
                         resched()
                     })
                 }
+                if (prefs.alarmEnabled) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Über die Samsung-Uhr")
+                            Muted(
+                                if (prefs.alarmViaClock) "Kompass stellt den Wecker \"Kompass\" in der Uhr-App, bei jedem Öffnen für den nächsten Morgen."
+                                else "Der eigene Kompass-Wecker klingelt.",
+                            )
+                        }
+                        Switch(checked = prefs.alarmViaClock, onCheckedChange = {
+                            prefs.alarmViaClock = it
+                            prefs.clockAlarmSet = ""
+                            if (it) ch.akh.kompass.alarm.ClockAlarm.ensure(ctx, force = true)
+                            resched()
+                        })
+                    }
+                    if (prefs.alarmViaClock) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { ch.akh.kompass.alarm.ClockAlarm.ensure(ctx, force = true) }) { Text("Jetzt stellen") }
+                        OutlinedButton(onClick = { ch.akh.kompass.alarm.ClockAlarm.openClock(ctx) }) { Text("Uhr-App öffnen") }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Text("Schlafbedarf", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -116,14 +137,14 @@ fun SleepScreen(onBack: () -> Unit) {
                 }
                 Muted("Jeweils ${prefs.shiftStepMinutes} Minuten früher, nur wenn es an den meisten Tagen geklappt hat.")
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {
+                if (!prefs.alarmViaClock) OutlinedButton(onClick = {
                     ctx.startActivity(Intent(ctx, AlarmActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(AlarmActivity.EXTRA_TEST, true))
                 }) { Text("Wecker testen") }
             }
         }
 
         // Android 14+: Vollbild-Wecker braucht eine Erlaubnis
-        if (Build.VERSION.SDK_INT >= 34) {
+        if (Build.VERSION.SDK_INT >= 34 && !prefs.alarmViaClock) {
             val nm = ctx.getSystemService(NotificationManager::class.java)
             if (!nm.canUseFullScreenIntent()) item {
                 Section(title = "Vollbild-Wecker erlauben") {

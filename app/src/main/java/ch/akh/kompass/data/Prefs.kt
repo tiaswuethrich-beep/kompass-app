@@ -78,6 +78,16 @@ class Prefs private constructor(context: Context) {
         get() = sp.getBoolean("alarmEnabled", false)
         set(v) = edit { putBoolean("alarmEnabled", v) }
 
+    /** Wecker in der Uhr-App des Handys (Samsung Uhr) stellen statt im Kompass-Wecker. */
+    var alarmViaClock: Boolean
+        get() = sp.getBoolean("alarmViaClock", true)
+        set(v) = edit { putBoolean("alarmViaClock", v) }
+
+    /** Für welchen Tag und welche Zeit der Wecker in der Uhr-App zuletzt gestellt wurde. */
+    var clockAlarmSet: String
+        get() = sp.getString("clockAlarmSet", "") ?: ""
+        set(v) = edit { putString("clockAlarmSet", v) }
+
     var remindersEnabled: Boolean
         get() = sp.getBoolean("remindersEnabled", true)
         set(v) = edit { putBoolean("remindersEnabled", v) }

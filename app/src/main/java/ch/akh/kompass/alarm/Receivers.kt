@@ -137,6 +137,12 @@ class ReminderReceiver : BroadcastReceiver() {
                         ),
                     )
                 } else emptyList()
+                if (key == "_routine" && ClockAlarm.active(context) && !ClockAlarm.isSet(context)) {
+                    Notify.simple(
+                        context, notifId("_clock"), Notify.CH_REMIND, "Wecker für morgen stellen",
+                        "Tippen, dann stellt Kompass den Wecker in der Uhr-App auf ${Time.hm(e.prefs.currentWake)}.", "sleep",
+                    )
+                }
                 val route = if (key == "_review") "mood" else "today"
                 Notify.simple(context, if (key == "_lights") Notify.ID_LIGHTS else notifId(key), Notify.CH_REMIND, r.title, r.text, route, actions)
             }
