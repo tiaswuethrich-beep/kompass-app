@@ -214,7 +214,7 @@ fun SleepScreen(onBack: () -> Unit) {
                         val day = s.wakeAt?.let { Time.dayOf(it) } ?: s.bedAt?.let { Time.dayOf(it) }
                         Text(day?.let { "${Time.weekday(it)} ${Time.short(it)}" } ?: "")
                         Muted(
-                            "${s.bedAt?.let { Time.hm(it) } ?: "?"} bis ${s.wakeAt?.let { Time.hm(it) } ?: "läuft"}" +
+                            "${s.bedAt?.let { Time.hm(it) } ?: "?"} bis ${s.wakeAt?.let { Time.hm(it) } ?: if (System.currentTimeMillis() - (s.bedAt ?: 0L) < 16 * 3600_000L) "läuft" else "Aufwachen fehlt, antippen"}" +
                                 if (s.bedAt != null && s.wakeAt != null) " · ${Time.durMs(s.wakeAt - s.bedAt)}" else "",
                         )
                         if (s.note.isNotBlank()) Muted(s.note)

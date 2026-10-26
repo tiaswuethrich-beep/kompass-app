@@ -14,9 +14,9 @@ interface KDao {
     @Insert suspend fun insertSleep(e: SleepEntry): Long
     @Upsert suspend fun upsertSleep(e: SleepEntry)
     @Delete suspend fun deleteSleep(e: SleepEntry)
-    @Query("SELECT * FROM sleep WHERE wakeAt IS NULL AND bedAt IS NOT NULL ORDER BY bedAt DESC LIMIT 1")
+    @Query("SELECT * FROM sleep WHERE wakeAt IS NULL AND bedAt IS NOT NULL AND bedAt > CAST(strftime('%s', 'now') AS INTEGER) * 1000 - 57600000 ORDER BY bedAt DESC LIMIT 1")
     suspend fun openSleep(): SleepEntry?
-    @Query("SELECT * FROM sleep WHERE wakeAt IS NULL AND bedAt IS NOT NULL ORDER BY bedAt DESC LIMIT 1")
+    @Query("SELECT * FROM sleep WHERE wakeAt IS NULL AND bedAt IS NOT NULL AND bedAt > CAST(strftime('%s', 'now') AS INTEGER) * 1000 - 57600000 ORDER BY bedAt DESC LIMIT 1")
     fun openSleepFlow(): Flow<SleepEntry?>
     @Query("SELECT * FROM sleep ORDER BY COALESCE(wakeAt, bedAt) DESC LIMIT :n")
     fun recentSleep(n: Int): Flow<List<SleepEntry>>
