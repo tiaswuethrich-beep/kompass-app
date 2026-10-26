@@ -75,32 +75,48 @@ object ScreenTime {
         val usm = context.getSystemService(UsageStatsManager::class.java) ?: return emptyMap()
         val end = minOf(to, System.currentTimeMillis())
         if (end <= from) return emptyMap()
-        val events = usm.queryEvents(from - 3 * 3600_000L, end)
-        val open = HashMap<String, Long>()
+        val events = usm.queryEvents(from - 12 * 3600_000L, end)
+        // Pro App die gerade sichtbaren Activities. Eine App zählt, solange mindestens eine davon offen ist.
+        // Wie bei Digital Wellbeing: andere Apps (Overlays, Dialoge) beenden die Zeit einer App nicht.
+        val openActs = HashMap<String, MutableSet<String>>()
+        val since = HashMap<String, Long>()
         val total = HashMap<String, Long>()
         val e = UsageEvents.Event()
-        fun close(pkg: String, at: Long) {
-            val s = open.remove(pkg) ?: return
+        fun add(pkg: String, s: Long, at: Long) {
             val a = maxOf(s, from)
             val b = minOf(at, end)
             if (b > a) total[pkg] = (total[pkg] ?: 0L) + (b - a)
         }
+        fun closeAll(at: Long) {
+            for ((pkg, s) in since) add(pkg, s, at)
+            since.clear()
+            openActs.clear()
+        }
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
             val pkg = e.packageName ?: continue
+            val act = e.className ?: pkg
             when (e.eventType) {
-                1 -> { // ACTIVITY_RESUMED / MOVE_TO_FOREGROUND
-                    // Ein anderes Paket im Vordergrund beendet alle offenen.
-                    open.keys.filter { it != pkg }.forEach { close(it, e.timeStamp) }
-                    if (pkg !in open) open[pkg] = e.timeStamp
+                1 -> { // ACTIVITY_RESUMED
+                    val set = openActs.getOrPut(pkg) { mutableSetOf() }
+                    if (set.isEmpty()) since[pkg] = e.timeStamp
+                    set += act
                 }
-                2, 23 -> close(pkg, e.timeStamp) // ACTIVITY_PAUSED, ACTIVITY_STOPPED
-                16, 26 -> open.keys.toList().forEach { close(it, e.timeStamp) } // Bildschirm aus, Gerät aus
+                2, 23 -> { // ACTIVITY_PAUSED, ACTIVITY_STOPPED
+                    val set = openActs[pkg] ?: continue
+                    if (set.remove(act) && set.isEmpty()) {
+                        since.remove(pkg)?.let { add(pkg, it, e.timeStamp) }
+                        openActs.remove(pkg)
+                    }
+                }
+                16, 26 -> closeAll(e.timeStamp) // Bildschirm aus, Gerät aus
             }
         }
-        open.keys.toList().forEach { close(it, end) }
+        closeAll(end)
         val skip = launcherPackages(context) + context.packageName + "com.android.systemui"
-        return total.filterKeys { it !in skip }
+        // Wie Digital Wellbeing: nur Apps mit Symbol im App-Menü zählen, keine Systemdienste.
+        val pm = context.packageManager
+        return total.filterKeys { it !in skip && pm.getLaunchIntentForPackage(it) != null }
     }
 
     fun day(context: Context, d: LocalDate = Time.today()): DayUsage {
