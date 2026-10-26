@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <TextView
+        android:id="@+id/w_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FFF2B84B"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:text="Kompass" />
+
+    <TextView
+        android:id="@+id/w_sub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FFE3E6EA"
+        android:textSize="16sp"
+        android:maxLines="2"
+        android:paddingTop="2dp"
+        android:text="" />
+
+    <LinearLayout
+        android:id="@+id/w_stats"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="10dp">
+
+        <LinearLayout
+            android:id="@+id/w_snus_box"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/widget_card"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp">
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Snus" android:textColor="#FFB4BCC5" android:textSize="11sp" />
+                <TextView android:id="@+id/w_snus" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="0" android:textColor="#FFE3E6EA" android:textSize="17sp" android:textStyle="bold" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/w_snus_add"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_accent"
+                android:paddingStart="10dp" android:paddingEnd="10dp"
+                android:paddingTop="6dp" android:paddingBottom="6dp"
+                android:text="+1" android:textColor="#FF2A1C00" android:textStyle="bold" android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/w_focus_box"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_card"
+            android:orientation="vertical"
+            android:padding="8dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Fokus" android:textColor="#FFB4BCC5" android:textSize="11sp" />
+            <TextView android:id="@+id/w_focus" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="0 min" android:textColor="#FFE3E6EA" android:textSize="17sp" android:textStyle="bold" android:maxLines="1" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/w_screen_box"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_card"
+            android:orientation="vertical"
+            android:padding="8dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Games/Videos" android:textColor="#FFB4BCC5" android:textSize="11sp" android:maxLines="1" />
+            <TextView android:id="@+id/w_screen" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="–" android:textColor="#FFE3E6EA" android:textSize="17sp" android:textStyle="bold" android:maxLines="1" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/w_sleep_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/widget_card"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="Gute Nacht"
+        android:textColor="#FFF2B84B"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/w_habits_head"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="10dp"
+        android:paddingBottom="4dp"
+        android:text="Gewohnheiten"
+        android:textColor="#FFB4BCC5"
+        android:textSize="12sp" />
+
+    <ListView
+        android:id="@+id/w_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="#FF333B43"
+        android:dividerHeight="1dp" />
+
+    <TextView
+        android:id="@+id/w_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Alles erledigt oder noch keine Gewohnheiten."
+        android:textColor="#FFB4BCC5"
+        android:textSize="13sp" />
+</LinearLayout>

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kompass</string>
+    <string name="widget_description">Dein Tag auf einen Blick: Gewohnheiten abhaken, Snus, Schlaf, Fokus und Bildschirmzeit.</string>
 </resources>

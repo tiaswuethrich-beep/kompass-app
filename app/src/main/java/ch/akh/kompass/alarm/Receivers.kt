@@ -10,6 +10,8 @@ import androidx.core.app.NotificationManagerCompat
 import ch.akh.kompass.R
 import ch.akh.kompass.data.FocusSession
 import ch.akh.kompass.data.HabitLog
+import ch.akh.kompass.data.SnusEntry
+import ch.akh.kompass.widget.KompassWidget
 import ch.akh.kompass.plan.Engine
 import ch.akh.kompass.util.ScreenTime
 import ch.akh.kompass.util.Time
@@ -76,7 +78,10 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Scheduler.ACTION_REMIND -> runAsync { remind(context, intent.getStringExtra(Scheduler.EXTRA_KEY) ?: return@runAsync) }
-            Scheduler.ACTION_CHECK -> runAsync { ScreenTime.check(context) }
+            Scheduler.ACTION_CHECK -> runAsync {
+                ScreenTime.check(context)
+                KompassWidget.update(context)
+            }
             Scheduler.ACTION_FOCUS_END -> runAsync { focusEnd(context) }
         }
     }
@@ -127,6 +132,7 @@ class ReminderReceiver : BroadcastReceiver() {
         e.dao.insertFocus(FocusSession(date = Time.dayOf(start).toString(), startedAt = start, minutes = p.focusMinutes, label = p.focusLabel))
         p.focusEndsAt = 0
         e.syncAuto()
+        KompassWidget.update(context)
         Notify.simple(context, Notify.ID_FOCUS, Notify.CH_FOCUS, "Fokus-Block fertig",
             "${p.focusMinutes} Minuten geschafft. Steh auf, trink Wasser, 5 bis 10 Minuten Pause.", "focus")
     }
@@ -152,11 +158,32 @@ class ActionReceiver : BroadcastReceiver() {
                 val key = intent.getStringExtra("key") ?: return
                 val level = intent.getIntExtra("level", 2)
                 Notify.cancel(context, ReminderReceiver.notifId(key))
-                runAsync { e.dao.upsertHabit(HabitLog(Time.todayStr(), key, level)) }
+                runAsync {
+                    e.dao.upsertHabit(HabitLog(Time.todayStr(), key, level))
+                    KompassWidget.update(context)
+                }
+            }
+            TOGGLE -> {
+                val key = intent.getStringExtra("key") ?: return
+                val level = intent.getIntExtra("level", 2)
+                runAsync {
+                    val today = Time.todayStr()
+                    val current = e.dao.habitsSince(today).firstOrNull { it.date == today && it.key == key }?.level ?: 0
+                    if (current == level) e.dao.deleteHabit(today, key) else e.dao.upsertHabit(HabitLog(today, key, level))
+                    KompassWidget.update(context)
+                }
+            }
+            SNUS_ADD -> runAsync {
+                e.dao.insertSnus(SnusEntry(at = System.currentTimeMillis(), type = 0))
+                e.syncAuto()
+                KompassWidget.update(context)
             }
             GOOD_NIGHT -> {
                 Notify.cancel(context, Notify.ID_LIGHTS)
-                runAsync { e.goodNight() }
+                runAsync {
+                    e.goodNight()
+                    KompassWidget.update(context)
+                }
             }
             WAKE -> {
                 Notify.cancel(context, Notify.ID_ALARM)
@@ -164,6 +191,7 @@ class ActionReceiver : BroadcastReceiver() {
                 runAsync {
                     e.wake()
                     Scheduler.rescheduleAll(context)
+                    KompassWidget.update(context)
                 }
             }
         }
@@ -173,12 +201,17 @@ class ActionReceiver : BroadcastReceiver() {
         const val HABIT = "ch.akh.kompass.HABIT"
         const val GOOD_NIGHT = "ch.akh.kompass.GOOD_NIGHT"
         const val WAKE = "ch.akh.kompass.WAKE"
+        const val TOGGLE = "ch.akh.kompass.TOGGLE"
+        const val SNUS_ADD = "ch.akh.kompass.SNUS_ADD"
     }
 }
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Notify.createChannels(context)
-        runAsync { Scheduler.rescheduleAll(context) }
+        runAsync {
+            Scheduler.rescheduleAll(context)
+            KompassWidget.update(context)
+        }
     }
 }

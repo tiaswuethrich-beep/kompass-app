@@ -25,6 +25,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Widget auf den neuesten Stand bringen, wenn die App verlassen wird.
+        ch.akh.kompass.widget.KompassWidget.refresh(this)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handle(intent)
