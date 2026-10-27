@@ -140,6 +140,9 @@ interface KDao {
     @Upsert suspend fun upsertTx(t: Tx)
     @Query("DELETE FROM tx WHERE id IN (:ids)") suspend fun deleteTxIds(ids: List<Long>)
     @Delete suspend fun deleteTx(t: Tx)
+    /** Automatisch aus Bank-Benachrichtigungen erfasste Buchungen in einem Zeitraum (inkl. Enddatum). */
+    @Query("SELECT * FROM tx WHERE source = 'Push' AND date >= :from AND date <= :to")
+    suspend fun pushTxBetween(from: String, to: String): List<Tx>
     @Query("SELECT * FROM tx WHERE date >= :from AND date < :to ORDER BY date DESC, id DESC")
     fun txBetween(from: String, to: String): Flow<List<Tx>>
     @Query("SELECT category, SUM(amount) AS total FROM tx WHERE date >= :from AND date < :to GROUP BY category ORDER BY total")
