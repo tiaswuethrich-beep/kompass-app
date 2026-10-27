@@ -153,7 +153,7 @@ fun PermissionsBlock(refreshKey: Int, onChanged: () -> Unit) {
             healthLauncher.launch(ch.akh.kompass.util.Health.PERMISSIONS)
         }
         PermissionRow("Ohne Akku-Einschränkung", battery, "Damit Android Erinnerungen nicht verschluckt") { open(ch.akh.kompass.util.Dnd.batteryIntent(ctx)) }
-        PermissionRow("Nicht stören steuern", dnd, "Schaltet während Fokus-Blöcken automatisch auf lautlos") { open(ch.akh.kompass.util.Dnd.settingsIntent()) }
+        PermissionRow("Nicht stören steuern", dnd, "Lautlos ab \"Gute Nacht\" bis \"Wach\" und während Fokus-Blöcken") { open(ch.akh.kompass.util.Dnd.settingsIntent()) }
     }
 }
 

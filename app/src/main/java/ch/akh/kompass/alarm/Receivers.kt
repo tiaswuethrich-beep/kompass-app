@@ -83,6 +83,7 @@ class ReminderReceiver : BroadcastReceiver() {
             }
             Scheduler.ACTION_CHECK -> runAsync {
                 if (!Engine.get(context).sleeping()) ScreenTime.check(context)
+                Engine.get(context).releaseNightIfOver()
                 Health.syncAll(context)
                 KompassWidget.update(context)
             }
