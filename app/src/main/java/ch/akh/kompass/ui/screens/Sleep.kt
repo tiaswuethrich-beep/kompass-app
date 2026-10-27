@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package ch.akh.kompass.ui.screens
 
 import android.app.NotificationManager
@@ -119,7 +121,7 @@ fun SleepScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("Schlafbedarf", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(450, 480, 510, 540).forEach { m ->
                         FilterChip(selected = prefs.sleepNeedMinutes == m, onClick = {
                             prefs.sleepNeedMinutes = m
@@ -129,7 +131,7 @@ fun SleepScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(4.dp))
                 Text("Verschiebung", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(3, 4, 7).forEach { d ->
                         FilterChip(selected = prefs.shiftEveryDays == d, onClick = { prefs.shiftEveryDays = d },
                             label = { Text("alle $d Tage") })

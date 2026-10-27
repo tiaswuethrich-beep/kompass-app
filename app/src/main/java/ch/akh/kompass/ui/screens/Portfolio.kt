@@ -644,7 +644,7 @@ private fun PlanDialog(a: Asset, existing: Plan?, onDismiss: () -> Unit, onSave:
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Muted("Kompass zeigt dir, ob du im Plan bist. Kaufen tust du bei deinem Anbieter, am einfachsten dort auch als Dauerauftrag.")
                 NumberField(amount, { amount = it }, "CHF pro Rate", decimal = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(7 to "Woche", 14 to "2 Wochen", 30 to "Monat").forEach { (n, l) ->
                         FilterChip(selected = days == n, onClick = { days = n }, label = { Text(l) })
                     }

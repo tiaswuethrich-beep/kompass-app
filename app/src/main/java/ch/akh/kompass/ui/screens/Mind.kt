@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package ch.akh.kompass.ui.screens
 
 import android.content.Intent
@@ -470,7 +472,7 @@ fun HabitsScreen(onBack: () -> Unit) {
                     TextInput(title, { title = it }, "Name")
                     TextInput(min, { min = it }, "Mindestversion (sehr klein)")
                     TextInput(full, { full = it }, "Ganze Version")
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf(7, 5, 3, 1).forEach { n ->
                             FilterChip(selected = perWeek == n, onClick = { perWeek = n }, label = { Text(if (n == 7) "täglich" else "${n}x/W") })
                         }

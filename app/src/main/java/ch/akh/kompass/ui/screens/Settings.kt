@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package ch.akh.kompass.ui.screens
 
 import android.Manifest
@@ -218,12 +220,12 @@ fun SettingsScreen(nav: NavHostController) {
         item {
             Section(title = "Erinnerungen und Check-ins") {
                 Text("Nachfassen, wenn etwas noch offen ist", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(0 to "Nie", 60 to "nach 1 h", 90 to "nach 1.5 h", 120 to "nach 2 h").forEach { (m, l) ->
                         FilterChip(selected = prefs.reminderRepeatMinutes == m, onClick = { prefs.reminderRepeatMinutes = m }, label = { Text(l) })
                     }
                 }
-                if (prefs.reminderRepeatMinutes > 0) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (prefs.reminderRepeatMinutes > 0) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(1, 2, 3).forEach { n ->
                         FilterChip(selected = prefs.reminderRepeatMax == n, onClick = { prefs.reminderRepeatMax = n }, label = { Text("höchstens ${n}x") })
                     }
@@ -244,14 +246,14 @@ fun SettingsScreen(nav: NavHostController) {
         }
         item {
             Section(title = "Schrittziel") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(5000, 6000, 7000, 8000, 10000).forEach { g ->
                         FilterChip(selected = prefs.stepGoal == g, onClick = { prefs.stepGoal = g; prefs.stepGoalChecked = Time.todayStr() },
                             label = { Text("${g / 1000}k") })
                     }
                 }
                 Text("Steigt automatisch bis", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(10000, 12000, 15000).forEach { g ->
                         FilterChip(selected = prefs.stepGoalMax == g, onClick = { prefs.stepGoalMax = g }, label = { Text("${g / 1000}k") })
                     }

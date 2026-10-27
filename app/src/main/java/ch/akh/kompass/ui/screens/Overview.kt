@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package ch.akh.kompass.ui.screens
 
 import ch.akh.kompass.data.snusPerDay
@@ -154,7 +156,7 @@ fun ScreenTimeScreen(onBack: () -> Unit) {
         item { BlockerSection() }
         item {
             Section(title = "Tagesbudget für Games und Videos", subtitle = if (prefs.phase < 3) "Aktiv ab Phase 3, du kannst es aber schon setzen" else null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(60, 90, 120, 180, 240).forEach { m ->
                         FilterChip(selected = prefs.entertainmentBudget == m, onClick = { prefs.entertainmentBudget = m },
                             label = { Text(if (m % 60 == 0) "${m / 60} h" else "${m / 60}.5 h") })
@@ -198,7 +200,7 @@ fun ScreenTimeScreen(onBack: () -> Unit) {
         }
         item {
             Section(title = "Datenquelle", subtitle = "Falls die Zahlen nicht mit deinem Handy übereinstimmen") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(0 to "Automatisch", 1 to "Ereignisse", 2 to "Android-Statistik").forEach { (v, l) ->
                         FilterChip(selected = prefs.screenSource == v, onClick = { prefs.screenSource = v }, label = { Text(l) })
                     }
@@ -313,7 +315,7 @@ fun BlockerSection() {
             Switch(checked = prefs.eveningStart >= 0, onCheckedChange = { prefs.eveningStart = if (it) 20 * 60 else -1 })
         }
         if (prefs.eveningStart >= 0) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 androidx.compose.material3.TextButton(onClick = { pickEvening = true }) { Text("Ab ${Time.hm(prefs.eveningStart)}") }
                 listOf(15, 30, 45, 60).forEach { m ->
                     FilterChip(selected = prefs.eveningAskAfter == m, onClick = { prefs.eveningAskAfter = m }, label = { Text("$m min") })
