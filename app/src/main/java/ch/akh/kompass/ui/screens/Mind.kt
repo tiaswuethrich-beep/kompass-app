@@ -323,6 +323,7 @@ fun MoodScreen(onBack: () -> Unit) {
     val lowJoy = last14.size >= 10 && last14.map { it.joy }.average() <= 2.0
 
     Screen(title = "Stimmung", onBack = onBack) {
+        aiItem(ch.akh.kompass.ai.AiFeature.MOOD)
         item {
             Section(title = "Heute") {
                 ScaleRow("Stimmung", mo) { mo = it }

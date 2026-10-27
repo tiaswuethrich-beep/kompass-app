@@ -198,6 +198,9 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
             Section(title = "Heute zählt") { Text(prefs.intention(todayStr), style = MaterialTheme.typography.titleMedium) }
         }
 
+        // ---------- KI ----------
+        aiTodayItems(nav)
+
         // ---------- Schnell eintragen ----------
         item(key = "quick") {
             Section(title = "Schnell eintragen") {
