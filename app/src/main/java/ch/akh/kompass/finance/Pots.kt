@@ -216,6 +216,47 @@ object PotMath {
         return if (good >= 3) good else null
     }
 
+    /** Hochrechnung der Ausgaben bis zum nächsten Lohn (gleiches Tempo wie bisher). */
+    fun projection(setup: BudgetSetup, spent: Double, today: LocalDate): Double {
+        val s = Cycle.start(setup.payday, today)
+        val e = Cycle.end(setup.payday, today)
+        val total = ChronoUnit.DAYS.between(s, e).toDouble()
+        val done = (ChronoUnit.DAYS.between(s, today) + 1).toDouble().coerceAtLeast(1.0)
+        return spent / done * total
+    }
+
+    /**
+     * Kurze Soll/Ist-Zusammenfassung für die KI. Nur Beträge und Topfnamen, keine Buchungstexte.
+     */
+    fun aiSummary(setup: BudgetSetup, states: List<PotState>, unassigned: Map<String, Double>, today: LocalDate): List<String> {
+        fun f(x: Double) = "%.0f".format(x)
+        val start = LocalDate.parse(setup.start)
+        if (today.isBefore(start)) {
+            return listOf("Budget-Töpfe starten mit dem Lohn am $start (Lohn ${f(setup.income)}). Bis dahin zählt nichts.") +
+                setup.pots.map { "Topf ${it.name}: ${f(it.amount)} pro Monat" }
+        }
+        val cs = Cycle.start(setup.payday, today)
+        val ce = Cycle.end(setup.payday, today)
+        val day = ChronoUnit.DAYS.between(cs, today) + 1
+        val len = ChronoUnit.DAYS.between(cs, ce)
+        val out = ArrayList<String>()
+        out += "Budget-Töpfe, Lohn-Monat $cs bis ${ce.minusDays(1)} (Tag $day von $len), Lohn ${f(setup.income)}, Soll gegen Ist:"
+        for (st in states) {
+            val p = st.pot
+            out += when (p.kind) {
+                PotKind.FIX, PotKind.ALLTAG ->
+                    "${p.name}: Soll ${f(p.amount)}, Ist ${f(st.thisCycle)}, Hochrechnung ${f(projection(setup, st.thisCycle, today))}" +
+                        if (st.over) " (überzogen)" else ""
+                PotKind.WUNSCH -> "${p.name}: +${f(p.amount)} pro Monat, aktuell im Topf ${f(st.balance ?: 0.0)}, diesen Monat ausgegeben ${f(st.thisCycle)}"
+                PotKind.STEUERN -> "${p.name}: Reserve ${f(st.balance ?: 0.0)} (${f(p.amount)} pro Monat)"
+                PotKind.SPAREN -> "${p.name}: Soll ${f(p.amount)}, überwiesen ${f(st.thisCycle)}" + if (st.done) " (erledigt)" else ""
+                PotKind.ETF, PotKind.BTC -> "${p.name}-Sparplan: Soll ${f(p.amount)}, gekauft ${f(st.thisCycle)}" + if (st.done) " (erledigt)" else ""
+            }
+        }
+        if (unassigned.isNotEmpty()) out += "Ohne Topf: " + unassigned.entries.joinToString(", ") { "${it.key} ${f(it.value)}" }
+        return out
+    }
+
     fun daysLeft(setup: BudgetSetup, today: LocalDate): Int =
         ChronoUnit.DAYS.between(today, Cycle.end(setup.payday, today)).toInt()
 }

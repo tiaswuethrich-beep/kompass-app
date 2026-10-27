@@ -68,6 +68,14 @@ enum class AiFeature(
         setOf(AiArea.MONEY),
         "Schätze den laufenden Monat ein: welche Kategorie fällt auf, liegt das Sparziel drin? Ein konkreter Spartipp. Höchstens 4 Sätze. Wenn keine Daten da sind, sag das kurz.",
     ),
+    BUDGET(
+        "budget", "Budget-Auswertung", "Töpfe auswerten",
+        setOf(AiArea.MONEY),
+        "Werte die Budget-Töpfe aus: Soll gegen Ist im laufenden Lohn-Monat. Reicht das Alltagsgeld laut Hochrechnung bis zum nächsten Lohn? " +
+            "Lob für Erledigtes (Sparkonto, Sparpläne) und den Stand im Wunsch-Topf. Ein konkreter Tipp für die restlichen Tage, z. B. ein Betrag pro Woche. " +
+            "Kein Tadel, keine Anlageberatung. Höchstens 5 Sätze. Wenn das Budget noch nicht gestartet ist, sag kurz, worauf es beim ersten Lohn ankommt.",
+        maxTokens = 400,
+    ),
     SCREEN(
         "screen", "Bildschirmzeit", "Einschätzen",
         setOf(AiArea.SCREEN, AiArea.SLEEP),

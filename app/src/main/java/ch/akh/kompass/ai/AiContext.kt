@@ -144,6 +144,26 @@ object AiContext {
             if (p.monthlyIncome > 0) line("Einkommen ${p.monthlyIncome.toInt()}, Sparziel ${p.savingsGoal.toInt()}")
             sums.forEach { s -> line("${s.category}: ${"%.0f".format(s.total)}" + (budgets[s.category]?.let { " (Budget ${"%.0f".format(it)})" } ?: "")) }
             line("Durch weniger Snus gespart: ${"%.0f".format(e.moneySaved(today))}")
+            // Budget-Töpfe: Soll gegen Ist aus den echten Buchungen und den Käufen im Portfolio.
+            ch.akh.kompass.finance.BudgetStore.get(context).setup.value?.let { bs ->
+                val cs = ch.akh.kompass.finance.Cycle.start(bs.payday, cal)
+                val ce = ch.akh.kompass.finance.Cycle.end(bs.payday, cal)
+                val since = minOf(bs.start, cs.toString())
+                val spends = dao.txBetween(since, cal.plusDays(1).toString()).first()
+                    .map { ch.akh.kompass.finance.Spend(it.date, it.amount, it.category) }
+                val pd = ch.akh.kompass.portfolio.PortfolioStore.get(context).data.value
+                val btcId = pd.assets.firstOrNull { it.kind == "btc" }?.id
+                val etfIds = pd.assets.filter { it.kind == "etf" }.map { it.id }.toSet()
+                val invested = mapOf(
+                    ch.akh.kompass.finance.PotKind.BTC to pd.trades.filter { it.assetId == btcId && it.qty > 0 }.map { it.date to it.chf },
+                    ch.akh.kompass.finance.PotKind.ETF to pd.trades.filter { it.assetId in etfIds && it.qty > 0 }.map { it.date to it.chf },
+                )
+                val states = ch.akh.kompass.finance.PotMath.states(bs, spends, invested, cal)
+                val un = ch.akh.kompass.finance.PotMath.unassigned(bs, spends, cs.toString(), ce.toString())
+                ch.akh.kompass.finance.PotMath.aiSummary(bs, states, un, cal).forEachIndexed { i, s ->
+                    if (i == 0) out.append(s).append('\n') else line(s)
+                }
+            }
         }
 
         val daysLeft = ChronoUnit.DAYS.between(Time.calToday(), LocalDate.of(2027, 8, 2))

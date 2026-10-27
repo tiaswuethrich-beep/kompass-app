@@ -160,6 +160,9 @@ fun BudgetScreen(onBack: () -> Unit, onPortfolio: () -> Unit) {
             }
         }
 
+        // KI-Auswertung (nur auf Knopfdruck, Haiku, braucht die Freigabe "Finanzen").
+        aiItem(ch.akh.kompass.ai.AiFeature.BUDGET)
+
         raise?.let { n ->
             item {
                 val spar = s.pots.firstOrNull { it.kind == PotKind.SPAREN }
@@ -188,7 +191,7 @@ fun BudgetScreen(onBack: () -> Unit, onPortfolio: () -> Unit) {
             }
         }
 
-        items(states, key = { it.pot.id }) { st -> PotCard(st, active, today, spends, onEdit = { editPot = st.pot }, onPortfolio = onPortfolio, hasEtf = etfIds.isNotEmpty()) }
+        items(states, key = { it.pot.id }) { st -> PotCard(s, st, active, today, spends, onEdit = { editPot = st.pot }, onPortfolio = onPortfolio, hasEtf = etfIds.isNotEmpty()) }
 
         if (unassigned.isNotEmpty()) item {
             Section(title = "Ohne Topf", subtitle = "Antippen und einer Kategorie einen Topf geben") {
@@ -252,7 +255,7 @@ fun BudgetScreen(onBack: () -> Unit, onPortfolio: () -> Unit) {
 }
 
 @Composable
-private fun PotCard(st: PotState, active: Boolean, today: LocalDate, spends: List<Spend>, onEdit: () -> Unit, onPortfolio: () -> Unit, hasEtf: Boolean) {
+private fun PotCard(setup: BudgetSetup, st: PotState, active: Boolean, today: LocalDate, spends: List<Spend>, onEdit: () -> Unit, onPortfolio: () -> Unit, hasEtf: Boolean) {
     val p = st.pot
     Section(title = p.name, subtitle = p.note.ifBlank { null }, onClick = onEdit, trailing = {
         Text(chf(p.amount), fontWeight = FontWeight.Medium)
@@ -267,6 +270,13 @@ private fun PotCard(st: PotState, active: Boolean, today: LocalDate, spends: Lis
                     Text(
                         if (st.over) "${chf(-st.remaining)} drüber" else "noch ${chf(st.remaining)}",
                         style = MaterialTheme.typography.bodySmall, color = if (st.over) Bad else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (active && st.thisCycle > 0) {
+                    val proj = PotMath.projection(setup, st.thisCycle, today)
+                    if (p.kind == PotKind.ALLTAG) Muted(
+                        "Im jetzigen Tempo am Monatsende: ${chf(proj)}" +
+                            if (proj > p.amount) ", also ${chf(proj - p.amount)} zu viel." else ". Passt.",
                     )
                 }
                 if (p.kind == PotKind.ALLTAG && active) {
