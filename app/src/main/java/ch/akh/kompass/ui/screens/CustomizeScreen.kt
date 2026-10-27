@@ -169,23 +169,13 @@ fun CustomizeScreen(onBack: () -> Unit) {
             }
         }
 
-        item { DevSection() }
-
         val wishes = Customize.wishes(ctx)
         if (wishes.isNotEmpty()) item {
-            Section(title = "Wunschliste", subtitle = "Braucht ein App-Update. Schick sie Claude im Projekt, oder später direkt aus der App.") {
+            Section(title = "Wunschliste", subtitle = "Braucht ein App-Update. Kopieren und Claude auf dem Handy schicken.") {
                 Column {
                     wishes.forEach { w ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("• $w", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            if (store.hasGithub) TextButton(onClick = {
-                                scope.launch {
-                                    ch.akh.kompass.ai.AppUpdate.sendWish(ctx, w.take(80), w).fold(
-                                        { Customize.removeWish(ctx, w); done = "Wunsch #$it gesendet, Claude setzt ihn um." },
-                                        { error = it.message },
-                                    )
-                                }
-                            }) { Text("Umsetzen") }
                             IconButton(onClick = { Customize.removeWish(ctx, w) }) { Icon(Icons.Filled.Close, "Entfernen") }
                         }
                     }
@@ -197,72 +187,5 @@ fun CustomizeScreen(onBack: () -> Unit) {
                 }) { Text("Alle kopieren") }
             }
         }
-    }
-}
-
-/** Wünsche direkt aus der App umsetzen lassen und neue Versionen holen. */
-@Composable
-private fun DevSection() {
-    val ctx = LocalContext.current
-    val store = aiState()
-    val scope = rememberCoroutineScope()
-    var token by remember { mutableStateOf("") }
-    var title by remember { mutableStateOf("") }
-    var details by remember { mutableStateOf("") }
-    var msg by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var list by remember { mutableStateOf<List<ch.akh.kompass.ai.AppUpdate.Wish>>(emptyList()) }
-    var reload by remember { mutableStateOf(0) }
-    androidx.compose.runtime.LaunchedEffect(store.hasGithub, reload) {
-        if (store.hasGithub) ch.akh.kompass.ai.AppUpdate.wishes(ctx).onSuccess { list = it }.onFailure { msg = it.message }
-    }
-
-    Section(title = "App weiterentwickeln", subtitle = "Neue Funktionen oder Bildschirme: Claude baut sie, Kompass meldet \"Update bereit\"") {
-        if (!store.hasGithub) {
-            Muted("Einmal einrichten: 1. Auf GitHub einen \"Fine-grained token\" nur für kompass-app erstellen, mit Issues: Lesen und Schreiben und Contents: Nur lesen. 2. Hier eintragen. 3. Im Repository unter Settings › Secrets › Actions den Claude-Key als ANTHROPIC_API_KEY speichern.")
-            OutlinedTextField(
-                value = token, onValueChange = { token = it.trim() }, label = { Text("github_pat_…") }, singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { store.saveGithub(token); token = ""; msg = "Gespeichert und verschlüsselt." }, enabled = token.length > 20) { Text("Speichern") }
-                OutlinedButton(onClick = {
-                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/settings/personal-access-tokens/new")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                }) { Text("Token erstellen") }
-            }
-        } else {
-            OutlinedTextField(value = title, onValueChange = { title = it.take(80) }, label = { Text("Wunsch in einem Satz") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = details, onValueChange = { details = it.take(3000) }, label = { Text("Details (optional)") }, minLines = 2, maxLines = 6, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            Button(enabled = !busy && title.isNotBlank(), onClick = {
-                busy = true
-                scope.launch {
-                    ch.akh.kompass.ai.AppUpdate.sendWish(ctx, title, details.ifBlank { title }).fold(
-                        { msg = "Wunsch #$it gesendet. Claude setzt ihn um, meist in 10 bis 30 Minuten."; title = ""; details = ""; reload++ },
-                        { msg = it.message },
-                    )
-                    busy = false
-                }
-            }) { Text("Umsetzen lassen") }
-            Muted("Kostet je nach Grösse etwa 0.30 bis 2 Dollar von deinem Claude-Guthaben. Neuer Code wird nur veröffentlicht, wenn die App fehlerfrei baut.")
-            if (list.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text("Letzte Wünsche", style = MaterialTheme.typography.labelLarge)
-                list.forEach { w ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("#${w.number} ${w.title}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Muted(w.status)
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { reload++ }) { Text("Status aktualisieren") }
-                TextButton(onClick = {
-                    scope.launch { msg = ch.akh.kompass.ai.AppUpdate.newer(ctx, force = true)?.let { "Neue Version ${it.tag} ist da, siehe Heute." } ?: "Du hast die neueste Version." }
-                }) { Text("Nach Update suchen") }
-                TextButton(onClick = { store.deleteGithub() }) { Text("Schlüssel entfernen") }
-            }
-        }
-        msg?.let { Muted(it) }
     }
 }
