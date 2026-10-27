@@ -71,6 +71,7 @@ import java.time.LocalTime
 fun TodayScreen(nav: NavHostController, activity: MainActivity) {
     val ctx = LocalContext.current
     val prefs = prefsState()
+    val hid = ch.akh.kompass.ai.Customize.hidden(ctx)
     val e = remember { Engine.get(ctx) }
     val dao = e.dao
     val scope = rememberCoroutineScope()
@@ -185,7 +186,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
             sinceWake >= untilLights - 120 && sinceWake < untilLights + 180 && !prefs.briefingDone("abend", todayStr) -> "abend"
             else -> null
         }
-        if (briefing != null) item(key = "briefing") {
+        if ("briefing" !in hid && briefing != null) item(key = "briefing") {
             Section(
                 title = if (briefing == "morgen") "Morgen-Check-in" else "Abend-Check-in",
                 subtitle = if (briefing == "morgen") "Schlaf, Stimmung, das eine Ding für heute" else "Konsum, Lesen, offene Gewohnheiten, Freude",
@@ -195,15 +196,15 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                 Button(onClick = { nav.go("briefing/$briefing") }, modifier = Modifier.fillMaxWidth()) { Text("Starten, dauert eine Minute") }
             }
         }
-        if (prefs.intention(todayStr).isNotBlank()) item(key = "intention") {
+        if ("intention" !in hid && prefs.intention(todayStr).isNotBlank()) item(key = "intention") {
             Section(title = "Heute zählt") { Text(prefs.intention(todayStr), style = MaterialTheme.typography.titleMedium) }
         }
 
         // ---------- KI ----------
-        aiTodayItems(nav)
+        if ("ai_entry" !in hid) aiTodayItems(nav)
 
         // ---------- Schnell eintragen ----------
-        item(key = "quick") {
+        if ("quick" !in hid) item(key = "quick") {
             Section(title = "Schnell eintragen") {
                 val coffee = subs.count { it.type == "Kaffee" }
                 val energy = subs.count { it.type == "Energy" }
@@ -248,7 +249,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Schlaf ----------
-        item {
+        if ("sleep" !in hid) item(key = "sleep") {
             val sleeping = openSleep != null
             Section(title = "Schlaf", onClick = { nav.go("sleep") }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -290,7 +291,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Gewohnheiten ----------
-        item {
+        if ("habits" !in hid) item(key = "habits") {
             val daily = items.filter { it.daily }
             val weekly = items.filter { !it.daily }
             val doneToday = daily.count { h -> logs.any { it.key == h.key && it.date == todayStr } }
@@ -319,7 +320,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Snus ----------
-        if (prefs.phase < 4 || snusToday > 0) item {
+        if ("snus" !in hid && (prefs.phase < 4 || snusToday > 0)) item(key = "snus") {
             val limit = e.snusLimit()
             Section(title = "Snus", onClick = { nav.go("snus") }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -346,7 +347,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Schritte ----------
-        if (steps != null && !prefs.habitDisabled("schritte")) item(key = "steps") {
+        if ("steps" !in hid && steps != null && !prefs.habitDisabled("schritte")) item(key = "steps") {
             val st = steps ?: 0L
             Section(title = "Schritte", subtitle = "Von der Fitbit über Health Connect") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -367,7 +368,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Fokus ----------
-        if (prefs.phase >= 2 || focusMin > 0) item {
+        if ("focus" !in hid && (prefs.phase >= 2 || focusMin > 0)) item(key = "focus") {
             val target = when {
                 prefs.phase >= 5 -> 480
                 prefs.phase >= 4 -> 360
@@ -385,7 +386,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Bildschirm ----------
-        item {
+        if ("screen" !in hid) item(key = "screen") {
             Section(title = "Bildschirmzeit", onClick = { nav.go("screen") }) {
                 val u = usage
                 if (u == null) {
@@ -409,7 +410,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Stimmung ----------
-        item {
+        if ("mood" !in hid) item(key = "mood") {
             Section(title = "Wie geht es dir heute?", onClick = { nav.go("mood") }) {
                 val m = mood
                 if (m != null) {
@@ -431,7 +432,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Kalender ----------
-        if (events.isNotEmpty()) item {
+        if ("events" !in hid && events.isNotEmpty()) item(key = "events") {
             Section(title = "Termine heute") {
                 events.forEach { ev ->
                     Row(Modifier.padding(vertical = 4.dp)) {
@@ -443,7 +444,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
         }
 
         // ---------- Tipp ----------
-        item {
+        if ("tip" !in hid) item(key = "tip") {
             val tip = phase.tips[(today.dayOfYear) % phase.tips.size]
             Section(title = "Tipp für diese Phase") { Muted(tip) }
         }

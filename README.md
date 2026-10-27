@@ -46,3 +46,10 @@ Unter **Mehr › KI (Claude)** den eigenen API-Key von [console.anthropic.com](h
 | Kategorisieren (bis 80 Händler) | 1000 rein, 1500 raus | 0.001 $ |
 
 Viel Nutzung (5 Karten, 3 Mahlzeiten, 10 Chat-Nachrichten pro Tag): etwa 0.25 Dollar im Monat. Mit Sonnet im Chat etwa 3 Dollar, mit Opus etwa 6 Dollar.
+
+## Kompass aus der App heraus anpassen
+
+- **Mehr › Kompass anpassen:** Wunsch eintippen ("Termine ausblenden, alles grün, Feierabend 19:30"). Claude Haiku schlägt Änderungen aus einem festen Katalog vor (Einstellungen, Gewohnheiten, Farben, Textgrösse, Abschnitte auf Heute). Erst nach Bestätigung übernommen, mit Rückgängig.
+- **App weiterentwickeln:** Grössere Wünsche (neue Funktionen) gehen als Issue mit Label `kompass-wunsch` an GitHub. `.github/workflows/wunsch.yml` lässt Claude Code (Sonnet 5.5, höchstens 40 Schritte) den Wunsch umsetzen, baut die App und schiebt nur bei erfolgreichem Build auf main. Dann startet der normale Release-Build, und Kompass zeigt "Update bereit".
+- Einrichtung: Im Repository unter Settings › Secrets and variables › Actions den Claude-Key als `ANTHROPIC_API_KEY` speichern. In der App einen Fine-grained Token nur für dieses Repository eintragen (Issues: Read and write, Contents: Read-only). Er wird wie der Claude-Key mit dem Android-Keystore verschlüsselt.
+- Nur Issues des Repository-Besitzers mit dem Label lösen die Automatik aus. `.github/` und der Signaturschlüssel sind für Claude gesperrt.

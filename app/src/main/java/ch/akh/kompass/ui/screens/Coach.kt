@@ -149,6 +149,7 @@ fun AiCard(feature: AiFeature, extra: String = "") {
 
 /** Einstieg auf "Heute": Tagesimpuls und Weg zum Coach, oder Hinweis zum Einrichten. */
 fun LazyListScope.aiTodayItems(nav: NavHostController) {
+    item(key = "app_update") { UpdateCard() }
     item(key = "ai_entry") {
         val store = aiState()
         when {
@@ -367,7 +368,7 @@ fun AiSettingsSection() {
         Spacer(Modifier.height(10.dp))
         Text("Monatsbudget (harte Grenze)", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(0.5f, 1f, 2f, 5f).forEach { b ->
+            listOf(0.5f, 1f, 2f, 5f, 10f).forEach { b ->
                 FilterChip(selected = store.monthlyBudget == b, onClick = { store.monthlyBudget = b }, label = { Text("$%.2f".format(b)) })
             }
         }
@@ -419,4 +420,22 @@ fun AiSettingsSection() {
         confirmButton = { TextButton(onClick = { store.deleteKey(); confirmDelete = false }) { Text("Entfernen") } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Abbrechen") } },
     )
+}
+
+/** Zeigt "Update bereit", wenn auf GitHub eine neuere Kompass-Version liegt (nur mit GitHub-Schlüssel). */
+@Composable
+fun UpdateCard() {
+    val ctx = LocalContext.current
+    val store = aiState()
+    val rel by androidx.compose.runtime.produceState<ch.akh.kompass.ai.AppUpdate.Release?>(null, store.hasGithub) {
+        value = ch.akh.kompass.ai.AppUpdate.newer(ctx)
+    }
+    rel?.let { r ->
+        Section(title = "Update bereit", subtitle = "Kompass ${r.tag} ist da", highlight = true) {
+            Button(onClick = {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r.apkUrl ?: r.pageUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }, modifier = Modifier.fillMaxWidth()) { Text("Herunterladen und installieren") }
+            Muted("Einfach über die alte Version installieren, deine Daten bleiben.")
+        }
+    }
 }
