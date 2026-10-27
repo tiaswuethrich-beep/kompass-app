@@ -79,7 +79,7 @@ private val monthFmt = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
 fun chf(x: Double) = "CHF " + "%,.2f".format(Locale("de", "CH"), x)
 
 @Composable
-fun FinanceScreen(onBack: () -> Unit, onPortfolio: (() -> Unit)? = null) {
+fun FinanceScreen(onBack: () -> Unit, onPortfolio: (() -> Unit)? = null, onBudget: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     val prefs = prefsState()
     val e = remember { Engine.get(ctx) }
@@ -183,6 +183,16 @@ fun FinanceScreen(onBack: () -> Unit, onPortfolio: (() -> Unit)? = null) {
                     Spacer(Modifier.height(8.dp))
                     Muted("Essen: ${chf(groceries)} Lebensmittel, ${chf(eatingOut)} auswärts (${(eatingOut / (eatingOut + groceries) * 100).toInt()} % auswärts).")
                 }
+            }
+        }
+        if (onBudget != null) item {
+            val sum = rememberBudgetSummary()
+            Section(title = "Budget-Töpfe", subtitle = sum?.text ?: "Lohn auf Töpfe verteilen", onClick = onBudget, highlight = sum == null) {
+                Muted(
+                    if (sum == null) "Fixkosten, Sparen, MSCI World, Bitcoin, Wunsch-Topf und Alltag: dein Plan mit CHF 2'300, fertig vorbereitet."
+                    else if (sum.warn) "Ein Topf ist überzogen. Antippen für Details."
+                    else "Antippen für alle Töpfe.",
+                )
             }
         }
         if (byCat.isNotEmpty()) item {
