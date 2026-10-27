@@ -367,7 +367,7 @@ fun AiSettingsSection() {
         Spacer(Modifier.height(10.dp))
         Text("Monatsbudget (harte Grenze)", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(0.5f, 1f, 2f, 5f).forEach { b ->
+            listOf(0.5f, 1f, 2f, 5f, 10f).forEach { b ->
                 FilterChip(selected = store.monthlyBudget == b, onClick = { store.monthlyBudget = b }, label = { Text("$%.2f".format(b)) })
             }
         }

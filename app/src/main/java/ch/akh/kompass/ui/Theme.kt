@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -110,10 +112,25 @@ private val Shape = Shapes(
 
 @Composable
 fun KompassTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) Dark else Light,
-        typography = Type,
-        shapes = Shape,
-        content = content,
+    // Aussehen lässt sich unter "Kompass anpassen" (auch per KI) ändern.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = ch.akh.kompass.data.Prefs.get(ctx)
+    prefs.version.collectAsState().value
+    val mode = ch.akh.kompass.ai.Customize.themeMode(ctx)
+    val dark = when (mode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
+    val accent = ch.akh.kompass.ai.Customize.accent(ctx)?.let { Color(it) }
+    val base = if (dark) Dark else Light
+    val scheme = if (accent == null) base else base.copy(
+        primary = accent,
+        inversePrimary = accent,
+        primaryContainer = if (dark) accent.copy(alpha = 0.32f).compositeOver(base.background) else accent.copy(alpha = 0.18f).compositeOver(Color.White),
     )
+    val scale = ch.akh.kompass.ai.Customize.textScale(ctx)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    MaterialTheme(colorScheme = scheme, typography = Type, shapes = Shape) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * scale),
+            content = content,
+        )
+    }
 }
