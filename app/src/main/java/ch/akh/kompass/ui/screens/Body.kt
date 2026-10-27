@@ -185,6 +185,7 @@ fun SnusScreen(nav: NavHostController, onBack: () -> Unit) {
     val freeDays = lastPouch?.let { ChronoUnit.DAYS.between(Time.dayOf(it), today) }
 
     Screen(title = "Snus", onBack = onBack) {
+        aiItem(ch.akh.kompass.ai.AiFeature.SNUS)
         item {
             Section {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -301,6 +302,7 @@ fun CravingScreen(onBack: () -> Unit) {
         "Gesicht mit kaltem Wasser waschen.",
     )
     Screen(title = "Craving", onBack = onBack) {
+        aiItem(ch.akh.kompass.ai.AiFeature.CRAVING)
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (left > 0) "Warte es ab" else "Geschafft. Es ist vorbei.", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)

@@ -49,6 +49,14 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*",
+                "META-INF/versions/9/previous-compilation-data.bin",
+            )
+        }
+    }
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -75,5 +83,7 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+    // Offizielles Anthropic-SDK für die optionale KI (Claude). Der API-Key kommt nur vom Nutzer.
+    implementation("com.anthropic:anthropic-java:3.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

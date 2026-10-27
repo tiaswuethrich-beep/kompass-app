@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.DirectionsRun
@@ -55,6 +57,8 @@ private val trackTiles = listOf(
     Tile("habits", "Gewohnheiten", "Alle, eigene, Erinnerungen", Icons.Filled.Checklist),
     Tile("briefing/morgen", "Morgen-Check-in", "Schlaf, Stimmung, Tagesziel", Icons.Filled.WbSunny),
     Tile("briefing/abend", "Abend-Check-in", "Konsum, Lesen, Freude", Icons.Filled.NightsStay),
+    Tile("meals", "Essen", "Kalorien per Foto", Icons.Filled.Restaurant),
+    Tile("coach", "Coach", "Fragen an die KI", Icons.Filled.AutoAwesome),
 )
 
 @Composable

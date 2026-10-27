@@ -1,7 +1,7 @@
 # Kompass
 
 Persönliche Android-App für den Weg bis August 2027: Schlaf, Routinen, Gym, Snus-Ausstieg, Ordnung, Finanzen, Bildschirmzeit, Lesen.
-Alles bleibt lokal auf dem Handy. Kein Konto, keine Cloud. Ins Internet geht Kompass nur für Kurse, die Ledger-Abfrage und (falls eingeschaltet) die KI.
+Alles bleibt lokal auf dem Handy. Kein Konto, keine Cloud. Ins Internet geht Kompass nur für Kurse und die Ledger-Abfrage im Portfolio sowie für die optionale KI (siehe unten), die nur auf Knopfdruck mit Claude spricht.
 
 ## Installieren
 
@@ -32,3 +32,25 @@ Lokal: `./gradlew assembleRelease` (braucht Android SDK 35 und JDK 17).
 - **Ledger:** Ledger Live hat keine Schnittstelle für andere Apps. Kompass nimmt darum den öffentlichen Konto-Schlüssel (xpub) aus Ledger Live, rechnet die Adressen auf dem Handy aus und fragt nur deren Guthaben ab. Damit kann niemand Geld bewegen. Der xpub liegt verschlüsselt im Android Keystore und ist nicht in der Sicherung.
 - **ETFs (z. B. MSCI World):** Kurse über die öffentliche Yahoo-Finance-Schnittstelle (inoffiziell, kann sich ändern; dann Preis von Hand). Broker wie Swissquote, PostFinance, yuh oder neon bieten Privatkunden keine Schnittstelle, darum werden Käufe von Hand eingetragen.
 - **Bank:** Open Banking in der Schweiz (bLink von SIX) ist nur für Banken und lizenzierte, vertraglich angebundene Fintechs offen, nicht für eine selbst gebaute App. Kompass nutzt darum zwei Wege ohne Login und ohne Drittanbieter: den Kontoauszug als camt.053 (genauer als CSV) und Push-Nachrichten der Bank-App, die direkt auf dem Handy gelesen werden.
+
+## KI (optional, Claude)
+
+Unter **Mehr › KI (Claude)** den eigenen API-Key von [console.anthropic.com](https://console.anthropic.com/settings/keys) eintragen. Ohne Key ist alles wie vorher.
+
+- **Wo:** Coach-Chat (Tracker › Coach oder Heute), Tagesimpuls auf Heute, Morgen- und Abend-Check-in, Schlaf, Snus, Craving, Gym, Stimmung, Finanzen (Einschätzung und automatisches Kategorisieren), Bildschirmzeit, Plan, Bücher (Empfehlungen), Essen (Kalorien per Foto).
+- **Modelle:** Alles läuft mit Haiku 5.5. Nur für den Coach-Chat lässt sich ein grösseres Modell wählen. Im Hintergrund läuft nie etwas.
+- **Günstig:** Standard ist Claude Haiku 5.5 mit Aufwand "low" und kurzen Antworten. Eine Antwort pro Tag und Bereich wird zwischengespeichert. Im Chat hilft der Prompt-Cache. Hartes Monatsbudget (Standard 1 Dollar) und Tageslimit.
+- **Sicher:** Der Key ist nie im Code. Er wird mit dem Android-Keystore verschlüsselt, liegt in einer eigenen Datei und ist nicht Teil der Sicherung. Nur HTTPS mit System-Zertifikaten, nur an api.anthropic.com.
+- **Privat:** Gesendet wird nur auf Knopfdruck und nur eine kurze Zusammenfassung der letzten 7 Tage aus den freigegebenen Bereichen. Nie der Name, nie Buchungstexte, Notizen nur mit Freigabe. "Vorschau" zeigt genau, was rausgeht.
+- Code: `ai/ClaudeClient.kt` (SDK-Aufruf), `ai/AiStore.kt` (Key, Budget, Cache), `ai/AiContext.kt` (Datenzusammenfassung), `ai/Ai.kt` (Funktionen und Prompts), `ai/Meals.kt` (Kalorien), `ai/FinanceAi.kt` (Kategorien mit gelernten Regeln), `ui/screens/Coach.kt` und `ui/screens/AiTools.kt` (Oberfläche).
+
+### Kosten (Schätzung, Haiku 5.5: 0.10 / 0.50 Dollar pro Million Tokens)
+
+| Aktion | Tokens ca. | Kosten pro Aufruf |
+|---|---|---|
+| KI-Karte (Impuls, Schlaf, Gym …) | 1500 rein, 400 raus | 0.00035 $ |
+| Coach-Nachricht | 2500 rein (teils Cache), 500 raus | 0.0005 $ |
+| Essen per Foto | 1200 rein, 250 raus | 0.00025 $ |
+| Kategorisieren (bis 80 Händler) | 1000 rein, 1500 raus | 0.001 $ |
+
+Viel Nutzung (5 Karten, 3 Mahlzeiten, 10 Chat-Nachrichten pro Tag): etwa 0.25 Dollar im Monat. Mit Sonnet im Chat etwa 3 Dollar, mit Opus etwa 6 Dollar.
