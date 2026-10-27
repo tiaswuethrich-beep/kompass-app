@@ -20,7 +20,7 @@ enum class AiFeature(
 ) {
     TODAY(
         "today", "Impuls für heute", "Impuls holen",
-        setOf(AiArea.SLEEP, AiArea.HABITS, AiArea.NICOTINE, AiArea.MOOD, AiArea.NOTES, AiArea.TRAINING),
+        setOf(AiArea.SLEEP, AiArea.HABITS, AiArea.NICOTINE, AiArea.MOOD, AiArea.NOTES, AiArea.TRAINING, AiArea.NUTRITION),
         "Gib einen kurzen Impuls für den restlichen Tag: das eine Wichtigste und einen konkreten kleinen Schritt. Höchstens 4 Sätze.",
     ),
     MORNING(
@@ -54,7 +54,7 @@ enum class AiFeature(
     ),
     GYM(
         "gym", "Training heute", "Vorschlag holen",
-        setOf(AiArea.TRAINING, AiArea.SLEEP, AiArea.HABITS),
+        setOf(AiArea.TRAINING, AiArea.SLEEP, AiArea.HABITS, AiArea.NUTRITION),
         "Schlag das passende Training für heute vor (Gym, Ausdauer, Pause), mit Begründung aus Schlaf und letzten Einheiten. Denk an die RS-Vorbereitung (Marschieren, Rumpf, Ausdauer). Kurz und konkret.",
         maxTokens = 400,
     ),
@@ -80,9 +80,20 @@ enum class AiFeature(
         "Sag, wie nah die nächste Phase ist, was am meisten fehlt und worauf es diese Woche ankommt. Höchstens 5 Sätze.",
         maxTokens = 400,
     ),
+    MEALS(
+        "meals", "Essen im Blick", "Einschätzen",
+        setOf(AiArea.NUTRITION, AiArea.TRAINING),
+        "Schätze das Essen der letzten Tage ein (Kalorien, Protein, Regelmässigkeit) im Hinblick auf Gym und Energie. Ein konkreter, günstiger Vorschlag für die nächste Mahlzeit. Höchstens 4 Sätze, kein Diät-Druck.",
+    ),
+    BOOKS(
+        "books", "Was lese ich als Nächstes?", "Empfehlungen holen",
+        setOf(AiArea.BOOKS, AiArea.HABITS),
+        "Empfiehl 3 Bücher, die zu dem passen, was gelesen und gut bewertet wurde, und zu den Zielen (Disziplin, Militär, Gesundheit, Geld). Keine Bücher, die schon auf der Liste stehen. Pro Buch: Titel, Autor, ein Satz warum. Lieber gut lesbar als schwer.",
+        maxTokens = 400,
+    ),
     CHAT(
         "chat", "Coach", "Senden",
-        AiArea.entries.toSet(),
+        AiArea.entries.toSet() - AiArea.MONEY_TEXTS,
         "",
         maxTokens = 600,
         daily = false,
@@ -119,7 +130,7 @@ Regeln für Antworten:
         val data = AiContext.build(context, feature.areas)
         val question = extra.ifBlank { "Bitte." }
         val r = ClaudeClient(key).use { c ->
-            c.ask(store.model, SYSTEM, dataBlock(feature.task, data), listOf(AiTurn(true, question)), feature.maxTokens, cache = false)
+            c.ask(AiModels.HAIKU, SYSTEM, dataBlock(feature.task, data), listOf(AiTurn(true, question)), feature.maxTokens, cache = false)
         }
         if (r is AiResult.Ok) {
             store.record(r.costUsd)
@@ -158,6 +169,19 @@ Regeln für Antworten:
     }
 
     const val MAX_TURNS = 12
+
+    /**
+     * Einmalige Anfrage für Werkzeuge (Mahlzeit, Kategorien). Immer Haiku, ohne Tagesdaten.
+     * Prüft Budget und zählt die Kosten.
+     */
+    suspend fun tool(context: Context, task: String, turn: AiTurn, maxTokens: Long): AiResult = withContext(Dispatchers.IO) {
+        val store = AiStore.get(context)
+        store.blockReason()?.let { return@withContext AiResult.Fail(it, keyProblem = !store.hasKey) }
+        val key = store.loadKey() ?: return@withContext AiResult.Fail("API-Key nicht lesbar. Bitte neu eintragen.", keyProblem = true)
+        val r = ClaudeClient(key).use { c -> c.ask(AiModels.HAIKU, SYSTEM, "Aufgabe: $task", listOf(turn), maxTokens, cache = false) }
+        if (r is AiResult.Ok) store.record(r.costUsd)
+        r
+    }
 
     fun saveChat(context: Context, turns: List<AiTurn>) {
         val arr = JSONArray()

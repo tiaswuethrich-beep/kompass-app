@@ -10,7 +10,9 @@ import com.anthropic.errors.NotFoundException
 import com.anthropic.errors.PermissionDeniedException
 import com.anthropic.errors.RateLimitException
 import com.anthropic.errors.UnauthorizedException
+import com.anthropic.models.messages.Base64ImageSource
 import com.anthropic.models.messages.CacheControlEphemeral
+import com.anthropic.models.messages.ContentBlockParam
 import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.OutputConfig
 import com.anthropic.models.messages.StopReason
@@ -28,7 +30,8 @@ object AiModels {
     fun byId(id: String): AiModel = all.firstOrNull { it.id == id } ?: HAIKU
 }
 
-data class AiTurn(val fromUser: Boolean, val text: String)
+/** Eine Nachricht. imageJpegB64 = optionales Foto (JPEG, Base64) zur Nachricht. */
+data class AiTurn(val fromUser: Boolean, val text: String, val imageJpegB64: String? = null)
 
 sealed class AiResult {
     data class Ok(
@@ -82,7 +85,20 @@ class ClaudeClient(apiKey: String, baseUrl: String? = null) : AutoCloseable {
                     dataSystem.takeIf { it.isNotBlank() }?.let { TextBlockParam.builder().text(it).build() },
                 ),
             )
-        turns.forEach { if (it.fromUser) b.addUserMessage(it.text) else b.addAssistantMessage(it.text) }
+        turns.forEach { t ->
+            when {
+                !t.fromUser -> b.addAssistantMessage(t.text)
+                t.imageJpegB64 != null -> b.addUserMessageOfContentBlockParams(
+                    listOf(
+                        ContentBlockParam.ofImage(
+                            Base64ImageSource.builder().data(t.imageJpegB64).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build(),
+                        ),
+                        ContentBlockParam.ofText(t.text),
+                    ),
+                )
+                else -> b.addUserMessage(t.text)
+            }
+        }
         if (cache) b.cacheControl(CacheControlEphemeral.builder().build())
 
         return try {

@@ -203,4 +203,7 @@ enum class AiArea(val key: String, val label: String, val defaultOn: Boolean) {
     NOTES("notes", "Eigene Notizen und Check-in-Texte", false),
     SCREEN("screen", "Bildschirmzeit (nur Summen)", true),
     MONEY("money", "Finanzen (nur Summen pro Kategorie)", false),
+    NUTRITION("nutrition", "Essen und Kalorien", true),
+    BOOKS("books", "Bücherliste und Bewertungen", true),
+    MONEY_TEXTS("moneytexts", "Händlernamen zum Kategorisieren (ohne Beträge)", false),
 }

@@ -124,7 +124,7 @@ fun AiCard(feature: AiFeature, extra: String = "") {
     }
     Section(
         title = feature.title,
-        subtitle = "Claude · ${store.model.label.substringBefore(" (")}",
+        subtitle = "Claude Haiku · nur auf Knopfdruck",
         trailing = {
             if (text != null && !busy) IconButton(onClick = { go(true) }) { Icon(Icons.Filled.Refresh, "Neu fragen") }
             else Icon(Icons.Filled.AutoAwesome, null, tint = Violet, modifier = Modifier.size(20.dp))
@@ -355,13 +355,13 @@ fun AiSettingsSection() {
 
         // ----- Modell -----
         Spacer(Modifier.height(10.dp))
-        Text("Modell", style = MaterialTheme.typography.labelLarge)
+        Text("Modell für den Coach-Chat", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             AiModels.all.forEach { m ->
                 FilterChip(selected = store.modelId == m.id, onClick = { store.modelId = m.id }, label = { Text(m.label) })
             }
         }
-        Muted("Haiku reicht für fast alles und kostet pro Antwort meist unter 0.1 Rappen.")
+        Muted("Alle anderen Funktionen (Karten, Essen, Kategorien) laufen immer mit Haiku, dem kleinsten Modell. Im Hintergrund läuft nie etwas, nur wenn du tippst.")
 
         // ----- Budget -----
         Spacer(Modifier.height(10.dp))

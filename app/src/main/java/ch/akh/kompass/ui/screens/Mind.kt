@@ -88,6 +88,7 @@ fun BooksScreen(onBack: () -> Unit) {
     Screen(title = "Bücher", onBack = onBack, fab = {
         FloatingActionButton(onClick = { add = true }) { Icon(Icons.Filled.Add, "Buch hinzufügen") }
     }) {
+        aiItem(ch.akh.kompass.ai.AiFeature.BOOKS)
         item {
             Section {
                 Row {

@@ -84,6 +84,26 @@ object AiContext {
             runCatching { Health.stepsOn(context, today) }.getOrNull()?.let { line("Schritte heute: $it (Ziel ${p.stepGoal})") }
         }
 
+        if (AiArea.NUTRITION in allowed) {
+            val days = (6 downTo 0).map { today.minusDays(it.toLong()).toString() }
+            val perDay = days.map { d -> d to Meals.on(context, d) }.filter { it.second.isNotEmpty() }
+            if (perDay.isNotEmpty()) {
+                out.append("Essen (Ziel ${Meals.kcalGoal(context)} kcal):\n")
+                perDay.forEach { (d, l) -> line("$d: ${l.sumOf { it.kcal }} kcal, ${l.sumOf { it.protein }} g Protein (${l.joinToString(", ") { it.name }.take(120)})") }
+            }
+        }
+
+        if (AiArea.BOOKS in allowed) {
+            val books = dao.books().first()
+            if (books.isNotEmpty()) {
+                out.append("Bücher:\n")
+                books.take(25).forEach { b ->
+                    val st = when (b.status) { 2 -> "gelesen" + if (b.rating > 0) ", ${b.rating}/5" else ""; 1 -> "lese gerade, Seite ${b.current}/${b.pages}"; else -> "will lesen" }
+                    line("${b.title}${if (b.author.isNotBlank()) " (${b.author})" else ""}: $st")
+                }
+            }
+        }
+
         if (AiArea.MOOD in allowed) {
             val moods = dao.moodSinceOnce(today.minusDays(6).toString())
             if (moods.isNotEmpty()) {
