@@ -34,6 +34,25 @@ object Dnd {
         context.getSystemService(NotificationManager::class.java).setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
     }
 
+    /** Ab "Gute Nacht": Nicht stören an (Wecker klingeln trotzdem). */
+    fun startNight(context: Context) {
+        if (!granted(context)) return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL) {
+            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+            Prefs.get(context).sp.edit().putBoolean("dndNight", true).apply()
+        }
+    }
+
+    /** Bei "Wach": Nicht stören wieder aus, aber nur, wenn Kompass es eingeschaltet hat. */
+    fun endNight(context: Context) {
+        val sp = Prefs.get(context).sp
+        if (!sp.getBoolean("dndNight", false)) return
+        sp.edit().putBoolean("dndNight", false).apply()
+        if (!granted(context)) return
+        context.getSystemService(NotificationManager::class.java).setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+    }
+
     fun batteryUnrestricted(context: Context): Boolean =
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
 

@@ -100,6 +100,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
     }
     val steps by produceState<Long?>(null, tick) {
         value = withContext(Dispatchers.IO) {
+            e.releaseNightIfOver()
             Health.syncAll(ctx)
             if (Health.available(ctx) && Health.hasAll(ctx)) Health.stepsOn(ctx, today) else null
         }

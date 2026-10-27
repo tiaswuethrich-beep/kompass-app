@@ -50,6 +50,7 @@ data class PhaseStatus(
  * Snus-Abbauplan, automatisches Abhaken und Phasen-Freischaltung.
  */
 class Engine(context: Context) {
+    private val app: Context = context
     val prefs = Prefs.get(context)
     val dao: KDao = AppDatabase.get(context).dao()
 
@@ -98,6 +99,11 @@ class Engine(context: Context) {
         prefs.lastShiftCheck = today
     }
 
+    /** Falls "Wach" vergessen wurde: Nicht stören wieder aus, sobald keine Nacht mehr läuft. */
+    suspend fun releaseNightIfOver() {
+        if (!sleeping()) ch.akh.kompass.util.Dnd.endNight(app)
+    }
+
     /** "Gute Nacht" gedrückt und noch nicht "Wach". */
     suspend fun sleeping(): Boolean = dao.openSleep() != null
 
@@ -112,6 +118,12 @@ class Engine(context: Context) {
 
     /** Gibt eine Funktion zurück, die den Eintrag wieder rückgängig macht. */
     suspend fun goodNight(now: Long = System.currentTimeMillis()): suspend () -> Unit {
+        ch.akh.kompass.util.Dnd.startNight(app)
+        val undo = goodNightEntry(now)
+        return { undo(); ch.akh.kompass.util.Dnd.endNight(app) }
+    }
+
+    private suspend fun goodNightEntry(now: Long): suspend () -> Unit {
         val open = dao.openSleep()
         return if (open != null && now - (open.bedAt ?: 0) < 4 * 3600_000L) {
             dao.upsertSleep(open.copy(bedAt = now))
@@ -139,6 +151,7 @@ class Engine(context: Context) {
 
     /** Morgens "Wach" gedrückt (oder Wecker beendet). Gibt das Level für "aufstehen" zurück. */
     suspend fun wake(now: Long = System.currentTimeMillis()): Int {
+        ch.akh.kompass.util.Dnd.endNight(app)
         // "Wach" startet den neuen Tag (ab 3 Uhr, davor zählt es als Nickerchen).
         val day = Time.beginDay(now)
         // Die Nacht gehört zum Kalendertag des Aufwachens.
