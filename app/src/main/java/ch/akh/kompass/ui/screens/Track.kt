@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.SmokeFree
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Card
@@ -46,7 +47,8 @@ private val trackTiles = listOf(
     Tile("snus", "Snus", "Zähler, Abbauplan, Geld", Icons.Filled.SmokeFree),
     Tile("books", "Bücher", "Leseliste und Seiten", Icons.Filled.MenuBook),
     Tile("focus", "Fokus", "Arbeitsblöcke ohne Ablenkung", Icons.Filled.Timer),
-    Tile("finance", "Finanzen", "Budget, Ausgaben, CSV-Import", Icons.Filled.AccountBalanceWallet),
+    Tile("finance", "Finanzen", "Budget, Ausgaben, Bankdaten", Icons.Filled.AccountBalanceWallet),
+    Tile("portfolio", "Portfolio", "Bitcoin, ETFs, Sparplan", Icons.Filled.ShowChart),
     Tile("screen", "Bildschirmzeit", "Apps, Budget, späte Nutzung", Icons.Filled.PhoneAndroid),
     Tile("mood", "Stimmung", "Tageswerte und Wochenrückblick", Icons.Filled.Mood),
     Tile("substances", "Konsum", "Koffein, Alkohol, Weed", Icons.Filled.LocalCafe),

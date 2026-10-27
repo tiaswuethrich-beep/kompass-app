@@ -152,7 +152,8 @@ fun KompassRoot(activity: MainActivity) {
             composable("craving") { CravingScreen(back) }
             composable("books") { BooksScreen(back) }
             composable("focus") { FocusScreen(back) }
-            composable("finance") { FinanceScreen(back) }
+            composable("finance") { FinanceScreen(back, onPortfolio = { nav.go("portfolio") }) }
+            composable("portfolio") { ch.akh.kompass.ui.screens.PortfolioScreen(back) }
             composable("screen") { ScreenTimeScreen(back) }
             composable("mood") { MoodScreen(back) }
             composable("substances") { SubstanceScreen(back) }

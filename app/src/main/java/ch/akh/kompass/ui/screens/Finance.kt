@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +46,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import ch.akh.kompass.bank.BankPush
+import ch.akh.kompass.bank.Camt
 import ch.akh.kompass.data.Budget
+import ch.akh.kompass.data.KDao
 import ch.akh.kompass.data.Tx
 import ch.akh.kompass.plan.Engine
 import ch.akh.kompass.ui.Bad
@@ -75,7 +79,7 @@ private val monthFmt = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
 fun chf(x: Double) = "CHF " + "%,.2f".format(Locale("de", "CH"), x)
 
 @Composable
-fun FinanceScreen(onBack: () -> Unit) {
+fun FinanceScreen(onBack: () -> Unit, onPortfolio: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     val prefs = prefsState()
     val e = remember { Engine.get(ctx) }
@@ -93,11 +97,51 @@ fun FinanceScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var budgetFor by remember { mutableStateOf<String?>(null) }
     var catFor by remember { mutableStateOf<Tx?>(null) }
+    var pushSetup by remember { mutableStateOf(false) }
+    val bank = remember { BankPush.get(ctx) }
+    bank.version.collectAsState().value
+    // Beim Zurückkommen aus den Android-Einstellungen neu prüfen.
+    var pushAccess by remember { mutableStateOf(BankPush.hasAccess(ctx)) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) pushAccess = BankPush.hasAccess(ctx)
+        }
+        lifecycle.lifecycle.addObserver(obs)
+        onDispose { lifecycle.lifecycle.removeObserver(obs) }
+    }
+
+    /** Importierte Buchungen speichern und passende automatisch erfasste ersetzen (keine Doppelten). */
+    fun saveImport(list: List<Tx>, kind: String) {
+        scope.launch {
+            val (ids, replaced) = withContext(Dispatchers.IO) {
+                val ids = e.dao.insertTxs(list).filter { it > 0 }
+                val replaced = replacePushDuplicates(e.dao, list)
+                ids to replaced
+            }
+            lastImport = ids
+            val added = ids.size
+            message = "$added neue Buchungen aus $kind importiert, ${list.size - added} waren schon da." +
+                if (replaced > 0) " $replaced automatisch erfasste durch die Bankdaten ersetzt." else ""
+            list.maxOfOrNull { it.date }?.let { month = YearMonth.from(java.time.LocalDate.parse(it)) }
+        }
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) scope.launch {
+            val bytes = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0) }
+            if (Camt.looksLike(bytes)) {
+                // ISO-20022-Auszug (camt.053/054), auch als ZIP: braucht keine Spalten-Zuordnung.
+                val entries = withContext(Dispatchers.IO) { runCatching { Camt.parse(bytes) } }
+                val list = entries.getOrNull().orEmpty().mapIndexed { i, c ->
+                    Tx(date = c.date, amount = c.amount, category = Csv.guessCategory(c.text, c.amount), text = c.text, source = "camt",
+                        hash = "camt|${c.date}|${c.amount}|${c.ref.ifBlank { c.text + "#" + i }}")
+                }
+                if (list.isEmpty()) message = "In der Datei wurden keine Buchungen gefunden." + (entries.exceptionOrNull()?.message?.let { " ($it)" } ?: "")
+                else saveImport(list, "dem Kontoauszug")
+                return@launch
+            }
             val rows = withContext(Dispatchers.IO) {
-                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
                 // Viele Schweizer Banken exportieren in Windows-1252 statt UTF-8.
                 val utf = bytes.toString(Charsets.UTF_8)
                 val text = if (utf.contains('�')) String(bytes, charset("windows-1252")) else utf
@@ -184,11 +228,13 @@ fun FinanceScreen(onBack: () -> Unit) {
         }
         item {
             Section(title = "Bankdaten importieren") {
-                Muted("Im E-Banking die Buchungen des Monats als CSV exportieren und hier auswählen. Doppelte Buchungen werden erkannt.")
+                Muted("Im E-Banking den Kontoauszug als camt.053 (XML oder ZIP, am genauesten) oder als CSV exportieren und hier auswählen. Doppelte Buchungen werden erkannt.")
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = { picker.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }) {
+                OutlinedButton(onClick = {
+                    picker.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/xml", "text/xml", "application/zip", "application/octet-stream"))
+                }) {
                     Icon(Icons.Filled.FileUpload, null)
-                    Text("  CSV wählen")
+                    Text("  Datei wählen")
                 }
                 message?.let { Muted(it) }
                 if (lastImport.isNotEmpty()) TextButton(onClick = {
@@ -197,6 +243,25 @@ fun FinanceScreen(onBack: () -> Unit) {
                     scope.launch(Dispatchers.IO) { e.dao.deleteTxIds(ids) }
                     message = "Import rückgängig gemacht: ${ids.size} Buchungen entfernt."
                 }) { Text("Diesen Import rückgängig machen") }
+            }
+        }
+        item {
+            val on = bank.enabled && pushAccess && bank.packages.isNotEmpty()
+            Section(
+                title = "Automatisch erfassen",
+                subtitle = if (on) "Aktiv für ${bank.packages.size} App(s)" else "Aus",
+                onClick = { pushSetup = true },
+            ) {
+                Muted(
+                    if (on) "Zahlungen aus den Push-Nachrichten deiner Bank landen hier von selbst. Der Kontoauszug ersetzt sie später genau."
+                    else "Ohne Bank-Login: Kompass liest die Push-Nachrichten deiner Bank- und TWINT-App und trägt Zahlungen ein. Alles bleibt auf dem Handy.",
+                )
+                bank.recent.firstOrNull()?.let { l -> Muted("Zuletzt: ${chf(l.amount)} · ${l.text} (${l.app})") }
+            }
+        }
+        if (onPortfolio != null) item {
+            Section(title = "Portfolio", subtitle = "Bitcoin, ETFs und Sparpläne", onClick = onPortfolio) {
+                Muted("Wert, Einstand und Gewinn deiner Anlagen, Ledger nur zum Anschauen.")
             }
         }
         item {
@@ -247,14 +312,7 @@ fun FinanceScreen(onBack: () -> Unit) {
     csvRows?.let { rows ->
         CsvDialog(rows, CsvMapping.decode(prefs.csvMapping), onDismiss = { csvRows = null }) { mapping ->
             prefs.csvMapping = mapping.encode()
-            val list = Csv.toTx(rows, mapping)
-            scope.launch {
-                val ids = withContext(Dispatchers.IO) { e.dao.insertTxs(list).filter { it > 0 } }
-                lastImport = ids
-                val added = ids.size
-                message = "$added neue Buchungen importiert, ${list.size - added} waren schon da."
-                list.maxOfOrNull { it.date }?.let { month = YearMonth.from(java.time.LocalDate.parse(it)) }
-            }
+            saveImport(Csv.toTx(rows, mapping), "der CSV")
             csvRows = null
         }
     }
@@ -283,6 +341,8 @@ fun FinanceScreen(onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { budgetFor = null }) { Text("Abbrechen") } },
         )
     }
+
+    if (pushSetup) PushSetupDialog(bank, pushAccess, onDismiss = { pushSetup = false })
 
     catFor?.let { t ->
         AlertDialog(
@@ -399,4 +459,82 @@ private fun ColumnPicker(label: String, value: Int, cols: List<Pair<Int, String>
             }
         }
     }
+}
+
+/**
+ * Ersetzt automatisch erfasste Buchungen (aus Push-Nachrichten) durch die genaueren aus dem
+ * Kontoauszug: gleicher Betrag, Datum höchstens 3 Tage auseinander.
+ */
+suspend fun replacePushDuplicates(dao: KDao, imported: List<Tx>): Int {
+    if (imported.isEmpty()) return 0
+    val from = java.time.LocalDate.parse(imported.minOf { it.date }).minusDays(3).toString()
+    val to = java.time.LocalDate.parse(imported.maxOf { it.date }).plusDays(3).toString()
+    val push = dao.pushTxBetween(from, to).toMutableList()
+    val remove = ArrayList<Long>()
+    for (t in imported) {
+        val d = java.time.LocalDate.parse(t.date)
+        val m = push.firstOrNull { p ->
+            kotlin.math.abs(p.amount - t.amount) < 0.005 &&
+                kotlin.math.abs(java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.parse(p.date), d)) <= 3
+        } ?: continue
+        push.remove(m)
+        remove += m.id
+    }
+    if (remove.isNotEmpty()) dao.deleteTxIds(remove)
+    return remove.size
+}
+
+@Composable
+private fun PushSetupDialog(bank: BankPush, access: Boolean, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val apps = remember { BankPush.installedApps(ctx) }
+    var showAll by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(bank.packages) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Buchungen automatisch erfassen") },
+        text = {
+            Column(
+                Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Muted(
+                    "So funktioniert es: In deiner Bank-App Push-Nachrichten für Zahlungen einschalten. Kompass liest dann nur die Nachrichten " +
+                        "der Apps, die du hier auswählst, und trägt Betrag und Händler ein. Kein Login, keine Daten an Dritte.",
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("1. Zugriff in Android", Modifier.weight(1f))
+                    if (access) Text("erlaubt", color = Good) else TextButton(onClick = { BankPush.openAccessSettings(ctx) }) { Text("Erlauben") }
+                }
+                if (!access) Muted("Android zeigt dort \"Kompass Buchungen\". Die Warnung dort ist allgemein: Kompass verwirft alles ausser den gewählten Apps sofort.")
+                Text("2. Welche Apps?", style = MaterialTheme.typography.labelLarge)
+                val shown = if (showAll) apps else apps.filter { it.suggested || it.pkg in selected }
+                if (shown.isEmpty()) Muted("Keine Bank-App erkannt.")
+                shown.forEach { a ->
+                    Row(Modifier.fillMaxWidth().clickable {
+                        selected = if (a.pkg in selected) selected - a.pkg else selected + a.pkg
+                    }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = a.pkg in selected, onCheckedChange = null)
+                        Text(a.label, Modifier.padding(start = 8.dp))
+                    }
+                }
+                TextButton(onClick = { showAll = !showAll }) { Text(if (showAll) "Nur Banken zeigen" else "Alle Apps zeigen") }
+                val recent = bank.recent
+                if (recent.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Zuletzt erfasst", style = MaterialTheme.typography.labelLarge)
+                    recent.forEach { Muted("${chf(it.amount)} · ${it.text} (${it.app})") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                bank.packages = selected
+                bank.enabled = selected.isNotEmpty()
+                if (selected.isNotEmpty() && !access) BankPush.openAccessSettings(ctx)
+                onDismiss()
+            }) { Text(if (selected.isEmpty()) "Ausschalten" else "Speichern") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+    )
 }

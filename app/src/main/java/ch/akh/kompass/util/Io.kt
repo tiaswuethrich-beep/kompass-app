@@ -207,6 +207,13 @@ object Backup {
                 zip.putNextEntry(ZipEntry("prefs.json"))
                 zip.write(prefsJson(context).toByteArray())
                 zip.closeEntry()
+                // Portfolio (Käufe, Werte, Sparpläne). Wallet-Schlüssel bleiben bewusst draussen.
+                val pf = File(context.filesDir, ch.akh.kompass.portfolio.PortfolioStore.FILE)
+                if (pf.exists()) {
+                    zip.putNextEntry(ZipEntry("portfolio.json"))
+                    pf.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
             }
         }
     }
@@ -233,6 +240,7 @@ object Backup {
     fun import(context: Context, uri: Uri) {
         var dbBytes: ByteArray? = null
         var prefs: String? = null
+        var portfolio: ByteArray? = null
         context.contentResolver.openInputStream(uri)?.use { input ->
             ZipInputStream(input).use { zip ->
                 var e = zip.nextEntry
@@ -240,6 +248,7 @@ object Backup {
                     when (e.name) {
                         "kompass.db" -> dbBytes = zip.readBytes()
                         "prefs.json" -> prefs = zip.readBytes().toString(Charsets.UTF_8)
+                        "portfolio.json" -> portfolio = zip.readBytes()
                     }
                     e = zip.nextEntry
                 }
@@ -251,6 +260,10 @@ object Backup {
         File(dbFile.path + "-wal").delete()
         File(dbFile.path + "-shm").delete()
         dbFile.writeBytes(bytes)
+        portfolio?.let {
+            File(context.filesDir, ch.akh.kompass.portfolio.PortfolioStore.FILE).writeBytes(it)
+            ch.akh.kompass.portfolio.PortfolioStore.get(context).reload()
+        }
         prefs?.let { json ->
             val o = JSONObject(json)
             val ed = Prefs.get(context).sp.edit().clear()
