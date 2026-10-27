@@ -231,6 +231,7 @@ fun FinanceScreen(onBack: () -> Unit, onPortfolio: (() -> Unit)? = null) {
         item {
             Section(title = "Bankdaten importieren") {
                 Muted("Im E-Banking den Kontoauszug als camt.053 (XML oder ZIP, am genauesten) oder als CSV exportieren und hier auswählen. Doppelte Buchungen werden erkannt.")
+                Muted("Raiffeisen: E-Banking › Zahlungen › Datentransfer › Download Kontodaten › Format \"XML (ISO)\".")
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = {
                     picker.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/xml", "text/xml", "application/zip", "application/octet-stream"))
@@ -502,7 +503,8 @@ private fun PushSetupDialog(bank: BankPush, access: Boolean, onDismiss: () -> Un
             ) {
                 Muted(
                     "So funktioniert es: In deiner Bank-App Push-Nachrichten für Zahlungen einschalten. Kompass liest dann nur die Nachrichten " +
-                        "der Apps, die du hier auswählst, und trägt Betrag und Händler ein. Kein Login, keine Daten an Dritte.",
+                        "der Apps, die du hier auswählst, und trägt Betrag und Händler ein. Kein Login, keine Daten an Dritte. " +
+                        "Bei Raiffeisen: Raiffeisen-App und debiX+ (Debitkarte) auswählen, dazu TWINT.",
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("1. Zugriff in Android", Modifier.weight(1f))

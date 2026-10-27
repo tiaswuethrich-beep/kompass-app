@@ -13,9 +13,10 @@ object PushParser {
     private val before = Regex("(?:CHF|SFr\\.?|Fr\\.)\\s?-?\\s?$NUM(?:\\.-|\\.–)?", RegexOption.IGNORE_CASE)
     private val after = Regex("$NUM\\s?(?:CHF|Fr\\.)", RegexOption.IGNORE_CASE)
 
+    // Anfragen (noch keine Buchung), Ablehnungen und Werbung. "genehmigt"/"bestätigt" sind dagegen echte Zahlungen.
     private val skip = listOf(
-        "bestätig", "freigeben", "freigabe", "genehmig", "confirm", "approve", "3-d", "3d secure", "abgelehnt", "declined",
-        "saldo", "kontostand", "balance", "limite", "verfügbar", "angebot", "aktion", "gutschein", "cashback-angebot",
+        "bestätigen", "bitte bestätig", "freigeben", "freigabe", "genehmigen", "please confirm", "confirm the", "approve the",
+        "3-d", "3d secure", "abgelehnt", "declined", "limite", "angebot", "aktion", "gutschein", "cashback-angebot",
         "anmeldung", "login", "code", "passwort", "erinnerung", "fällig", "rechnung ist da", "ebill", "e-bill",
     )
     private val income = listOf(
@@ -27,8 +28,16 @@ object PushParser {
         "purchase", "ausgegeben", "gesendet", "überwiesen", "bezug", "abhebung", "withdraw", "transaktion", "kartenzahlung",
     )
 
+    /** "Neuer Saldo: CHF 1'234.00" usw. entfernen, damit nur der Buchungsbetrag übrig bleibt. */
+    private val balance = Regex(
+        "(?:neuer\\s+|aktueller\\s+)?(?:konto)?(?:saldo|kontostand|verfügbar\\w*(?:\\s+(?:saldo|betrag|limit))?|balance|available)\\s*(?:beträgt|neu)?\\s*[:=]?\\s*" +
+            "(?:CHF|Fr\\.)?\\s*-?\\s*$NUM(?:\\s?CHF)?",
+        RegexOption.IGNORE_CASE,
+    )
+
     fun parse(title: String, text: String): Parsed? {
-        val all = "$title $text".replace('\n', ' ').trim()
+        val raw = "$title $text".replace('\n', ' ').trim()
+        val all = raw.replace(balance, " ").replace(Regex("\\s+"), " ").trim()
         val low = all.lowercase()
         if (skip.any { low.contains(it) }) return null
         val isIncome = income.any { low.contains(it) }
@@ -58,13 +67,15 @@ object PushParser {
     )
     private val genericTitles = listOf("twint", "zahlung", "belastung", "gutschrift", "kartenzahlung", "transaktion", "payment", "neue")
 
-    private val tailVerbs = Regex("\\s+(gesendet|geschickt|überwiesen|bezahlt|belastet|sent|paid)\\.?$", RegexOption.IGNORE_CASE)
+    private val tailVerbs = Regex("\\s+(gesendet|geschickt|überwiesen|bezahlt|belastet|genehmigt|bestätigt|gebucht|sent|paid|approved)\\.?$", RegexOption.IGNORE_CASE)
 
     private fun clean(s: String) = s.trim().trim('"', '«', '»', '„', '“', '–', '-', ':', ' ').replace(tailVerbs, "").trim()
 
     private fun merchant(all: String, title: String, amountText: String, isIncome: Boolean): String {
         fun strip(s: String) = s.replace(amountText, " ").replace(Regex("\\s+"), " ").trim()
         val body = strip(all.removePrefix(title).trim())
+            .replace(Regex("\\b(?:auf|vom|von|zulasten|zugunsten)\\s+(?:ihr(?:em)?\\s+|dein(?:em)?\\s+)?konto\\s*[A-Z0-9 ]*\\.?", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\s+"), " ").trim()
         val pats = if (isIncome) fromPatterns + atPatterns else atPatterns + fromPatterns
         for (hay in listOf(body, strip(all))) {
             for (p in pats) {

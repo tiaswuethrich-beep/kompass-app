@@ -74,7 +74,7 @@ class BankPush private constructor(context: Context) {
 
         private val bankWords = listOf(
             "bank", "ubs", "postfinance", "raiffeisen", "zkb", "kantonalbank", "neon", "yuh", "revolut", "twint", "cembra",
-            "viseca", "one", "swisscard", "cler", "zak", "valiant", "radicant", "migros bank", "bcv", "bcge", "lukb", "blkb",
+            "viseca", "one", "debix", "debix+", "swisscard", "cler", "zak", "valiant", "radicant", "migros bank", "bcv", "bcge", "lukb", "blkb",
             "akb", "sgkb", "bekb", "wir", "swissquote", "wise", "n26", "csx", "debit", "credit", "visa", "mastercard",
         )
 
