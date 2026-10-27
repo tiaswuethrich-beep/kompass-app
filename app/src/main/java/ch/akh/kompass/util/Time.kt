@@ -35,6 +35,40 @@ object Time {
 
     @Volatile var store: DayStore? = null
 
+    /**
+     * Schätzt, wann an einem Tag wirklich aufgestanden wurde (z. B. Ende der längsten Handypause in der Nacht).
+     * Wird beim App-Start gesetzt. Null heisst: keine Schätzung möglich.
+     */
+    @Volatile var wakeGuess: ((LocalDate) -> Long?)? = null
+
+    /**
+     * Beginn für einen Tag, an dem "Wach" vergessen wurde: die geschätzte Aufstehzeit,
+     * sonst die geplante. Nie die Frist selbst, sonst rutschen alle Einträge vom Vormittag in den Vortag.
+     */
+    fun guessStart(d: LocalDate): Long {
+        val lo = at(d, EARLIEST_WAKE)
+        val hi = deadline(d)
+        val guess = try { wakeGuess?.invoke(d) } catch (_: Exception) { null }
+        val plan = at(d, store?.planWake() ?: (7 * 60))
+        return (guess ?: plan).coerceIn(lo, hi)
+    }
+
+    /**
+     * Repariert automatische Tagesbeginne der letzten Tage, die noch auf die Frist (14 Uhr) gesetzt sind.
+     * Die Einträge selbst bleiben unverändert, sie werden nur wieder dem richtigen Tag zugeordnet.
+     */
+    fun repairAutoStarts(days: Int = 14) {
+        val s = store ?: return
+        val cal = calToday()
+        for (i in 0..days) {
+            val d = cal.minusDays(i.toLong())
+            if (s.source(d) != "auto") continue
+            val start = s.start(d) ?: continue
+            val fixed = guessStart(d)
+            if (fixed < start) s.record(d, fixed, "auto")
+        }
+    }
+
     /** Frühestens ab 3 Uhr kann "Wach" einen neuen Tag beginnen (sonst war es ein Nickerchen). */
     const val EARLIEST_WAKE = 3 * 60
 
@@ -68,7 +102,8 @@ object Time {
         val s = store
         if (s != null && s.start(cal) == null && now >= deadline(cal)) {
             // Wach vergessen: Tag beginnt automatisch, damit Zähler nicht ewig am Vortag hängen.
-            s.record(cal, deadline(cal), "auto")
+            // Beginn rückwirkend auf die geschätzte Aufstehzeit, damit Snus, Kaffee usw. vom Vormittag zählen.
+            s.record(cal, guessStart(cal), "auto")
         }
         return if (now >= startOfDay(cal)) cal else cal.minusDays(1)
     }
