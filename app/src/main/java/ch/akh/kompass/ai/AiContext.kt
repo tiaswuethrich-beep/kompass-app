@@ -64,7 +64,7 @@ object AiContext {
         }
 
         if (AiArea.NICOTINE in allowed) {
-            val perDay = dao.snusPerDayOnce(Time.startOfDay(today.minusDays(6))).associate { it.day to it.n }
+            val perDay = dao.snusTimesOnce(Time.startOfDay(today.minusDays(6))).groupingBy { Time.dayOf(it).toString() }.eachCount()
             val days = (6 downTo 0).map { today.minusDays(it.toLong()) }
             out.append("Snus (Beutel pro Tag, ältester zuerst): ${days.joinToString(", ") { "${perDay[it.toString()] ?: 0}" }}\n")
             line("Ausgangswert ${p.snusBaseline}/Tag, Limit heute: ${e.snusLimit(today)?.toString() ?: "keins (nur zählen)"}, Abbau ab ${p.taperStart}, rauchfrei-Ziel ${p.quitDate}")
