@@ -68,7 +68,7 @@ object Csv {
     val categories = listOf(
         "Lebensmittel", "Auswärts essen", "Snus und Kiosk", "Gaming und Abos", "Transport",
         "Kleidung", "Gym und Sport", "Wohnen", "Handy und Internet", "Gesundheit", "Freizeit",
-        "Bücher", "Sparen", "Sonstiges", "Einnahmen",
+        "Bücher", "Sparen", "Anlegen", "Wünsche", "Steuern", "Sonstiges", "Einnahmen",
     )
 
     private val rules = listOf(
@@ -84,6 +84,8 @@ object Csv {
         "Bücher" to listOf("orell", "thalia", "exlibris", "ex libris", "buch"),
         "Wohnen" to listOf("miete", "ikea", "jumbo", "hornbach", "ewz", "bkw"),
         "Sparen" to listOf("sparkonto", "säule 3a", "3a", "viac", "frankly", "finpension"),
+        "Anlegen" to listOf("relai", "pocket bitcoin", "swissquote", "interactive brokers", "degiro", "saxo", "yuh invest", "true wealth", "selma"),
+        "Steuern" to listOf("steueramt", "steuerverwaltung", "staatssteuer", "gemeindesteuer", "bundessteuer", "steuerrechnung"),
     )
 
     fun guessCategory(text: String, amount: Double): String {
@@ -195,6 +197,8 @@ object Csv {
 // ======================= Backup =======================
 
 object Backup {
+    private val extraFiles = listOf(ch.akh.kompass.portfolio.PortfolioStore.FILE, ch.akh.kompass.finance.BudgetStore.FILE)
+
     fun export(context: Context, uri: Uri) {
         val db = AppDatabase.get(context)
         db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { it.moveToFirst() }
@@ -207,11 +211,12 @@ object Backup {
                 zip.putNextEntry(ZipEntry("prefs.json"))
                 zip.write(prefsJson(context).toByteArray())
                 zip.closeEntry()
-                // Portfolio (Käufe, Werte, Sparpläne). Wallet-Schlüssel bleiben bewusst draussen.
-                val pf = File(context.filesDir, ch.akh.kompass.portfolio.PortfolioStore.FILE)
-                if (pf.exists()) {
-                    zip.putNextEntry(ZipEntry("portfolio.json"))
-                    pf.inputStream().use { it.copyTo(zip) }
+                // Portfolio (Käufe, Werte, Sparpläne) und Budget-Töpfe. Wallet-Schlüssel bleiben bewusst draussen.
+                for (name in extraFiles) {
+                    val f = File(context.filesDir, name)
+                    if (!f.exists()) continue
+                    zip.putNextEntry(ZipEntry(name))
+                    f.inputStream().use { it.copyTo(zip) }
                     zip.closeEntry()
                 }
             }
@@ -240,7 +245,7 @@ object Backup {
     fun import(context: Context, uri: Uri) {
         var dbBytes: ByteArray? = null
         var prefs: String? = null
-        var portfolio: ByteArray? = null
+        val extras = HashMap<String, ByteArray>()
         context.contentResolver.openInputStream(uri)?.use { input ->
             ZipInputStream(input).use { zip ->
                 var e = zip.nextEntry
@@ -248,7 +253,7 @@ object Backup {
                     when (e.name) {
                         "kompass.db" -> dbBytes = zip.readBytes()
                         "prefs.json" -> prefs = zip.readBytes().toString(Charsets.UTF_8)
-                        "portfolio.json" -> portfolio = zip.readBytes()
+                        in extraFiles -> extras[e.name] = zip.readBytes()
                     }
                     e = zip.nextEntry
                 }
@@ -260,9 +265,10 @@ object Backup {
         File(dbFile.path + "-wal").delete()
         File(dbFile.path + "-shm").delete()
         dbFile.writeBytes(bytes)
-        portfolio?.let {
-            File(context.filesDir, ch.akh.kompass.portfolio.PortfolioStore.FILE).writeBytes(it)
+        for ((name, data) in extras) File(context.filesDir, name).writeBytes(data)
+        if (extras.isNotEmpty()) {
             ch.akh.kompass.portfolio.PortfolioStore.get(context).reload()
+            ch.akh.kompass.finance.BudgetStore.get(context).reload()
         }
         prefs?.let { json ->
             val o = JSONObject(json)
