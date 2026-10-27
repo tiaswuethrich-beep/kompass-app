@@ -7,11 +7,8 @@ import ch.akh.kompass.data.Prefs
 import ch.akh.kompass.util.Time
 
 /**
- * Stellt den Wecker in der Uhr-App des Handys (bei Samsung: Samsung Uhr).
- * Android erlaubt das nur, solange Kompass offen ist. Darum stellt Kompass den nächsten Wecker
- * bei jedem Öffnen und erinnert abends, falls er für morgen noch fehlt.
- * Es wird ein einmaliger Wecker mit dem Namen "Kompass" gestellt. Die Uhr-App verwendet einen
- * bestehenden Wecker mit gleicher Zeit und gleichem Namen wieder.
+ * Stellt den Wecker in der Uhr-App des Handys (bei Samsung: Samsung Uhr), aber nur auf Knopfdruck.
+ * Die Uhr-App zeigt den Wecker dabei an, damit man sieht, was gestellt wurde.
  */
 object ClockAlarm {
     const val LABEL = "Kompass"
@@ -19,7 +16,7 @@ object ClockAlarm {
     /** Schlüssel für den nächsten nötigen Wecker, null wenn der Wecker aus ist. */
     fun neededKey(context: Context): String? {
         val next = Scheduler.nextWake(context) ?: return null
-        return "${Time.dayOf(next)}@${Time.minuteOfDay(next)}"
+        return "${Time.calDay(next)}@${Time.minuteOfDay(next)}"
     }
 
     fun active(context: Context): Boolean {
@@ -41,7 +38,7 @@ object ClockAlarm {
             .putExtra(AlarmClock.EXTRA_MINUTES, minute % 60)
             .putExtra(AlarmClock.EXTRA_MESSAGE, LABEL)
             .putExtra(AlarmClock.EXTRA_VIBRATE, true)
-            .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+            .putExtra(AlarmClock.EXTRA_SKIP_UI, false)
         return try {
             activityContext.startActivity(i)
             p.clockAlarmSet = key

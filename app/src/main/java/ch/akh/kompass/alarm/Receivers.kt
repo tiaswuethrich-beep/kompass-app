@@ -82,7 +82,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 remind(context, intent.getStringExtra(Scheduler.EXTRA_KEY) ?: return@runAsync, intent.getIntExtra(Scheduler.EXTRA_ATTEMPT, 0))
             }
             Scheduler.ACTION_CHECK -> runAsync {
-                ScreenTime.check(context)
+                if (!Engine.get(context).sleeping()) ScreenTime.check(context)
                 Health.syncAll(context)
                 KompassWidget.update(context)
             }
@@ -95,6 +95,13 @@ class ReminderReceiver : BroadcastReceiver() {
         val today = Time.todayStr()
         val all = Scheduler.reminders(context)
         val r = all.firstOrNull { it.key == key }
+        // Nach "Gute Nacht" und in der Nacht ist Ruhe. Nur "Licht aus" darf noch kommen, und auch das nur,
+        // solange noch nicht "Gute Nacht" gedrückt wurde.
+        val quiet = if (key == "_lights") e.sleeping() else e.quietNow()
+        if (r != null && quiet) {
+            if (attempt == 0) Scheduler.scheduleReminders(context)
+            return
+        }
         if (r != null) {
             if (r.habit) {
                 e.syncAuto()
@@ -137,12 +144,6 @@ class ReminderReceiver : BroadcastReceiver() {
                         ),
                     )
                 } else emptyList()
-                if (key == "_routine" && ClockAlarm.active(context) && !ClockAlarm.isSet(context)) {
-                    Notify.simple(
-                        context, notifId("_clock"), Notify.CH_REMIND, "Wecker für morgen stellen",
-                        "Tippen, dann stellt Kompass den Wecker in der Uhr-App auf ${Time.hm(e.prefs.currentWake)}.", "sleep",
-                    )
-                }
                 val route = if (key == "_review") "mood" else "today"
                 Notify.simple(context, if (key == "_lights") Notify.ID_LIGHTS else notifId(key), Notify.CH_REMIND, r.title, r.text, route, actions)
             }
@@ -227,7 +228,7 @@ class ActionReceiver : BroadcastReceiver() {
                 KompassWidget.update(context)
             }
             GOOD_NIGHT -> {
-                Notify.cancel(context, Notify.ID_LIGHTS)
+                Notify.clearForNight(context)
                 runAsync {
                     e.goodNight()
                     KompassWidget.update(context)

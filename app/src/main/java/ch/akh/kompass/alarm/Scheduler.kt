@@ -50,7 +50,7 @@ object Scheduler {
     fun nextWake(context: Context, now: Long = System.currentTimeMillis()): Long? {
         val p = Prefs.get(context)
         if (!p.alarmEnabled) return null
-        val today = Time.today()
+        val today = Time.calToday()
         val t = Time.at(today, p.currentWake)
         return if (t > now + 30_000) t else Time.at(today.plusDays(1), p.currentWake)
     }
@@ -192,7 +192,7 @@ object Scheduler {
         val lo = e.lightsOut()
         val sinceWake = ((m - p.currentWake) % 1440 + 1440) % 1440
         val untilLights = ((lo - p.currentWake) % 1440 + 1440) % 1440
-        if (sinceWake >= untilLights || Time.dayOf(at) != Time.today()) return
+        if (sinceWake >= untilLights || Time.calDay(at) != Time.calDay(System.currentTimeMillis())) return
         val pi = followUpIntent(context, key, attempt)
         try {
             am(context).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)

@@ -48,6 +48,7 @@ import ch.akh.kompass.ui.undo
 import ch.akh.kompass.util.Health
 import ch.akh.kompass.util.Time
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -242,6 +243,12 @@ fun BriefingScreen(kind: String, onBack: () -> Unit) {
                         Spacer(Modifier.height(6.dp))
                         Muted("Heute wolltest du: ${prefs.intention(todayStr)}")
                     }
+                    if (prefs.alarmEnabled && prefs.alarmViaClock) {
+                        Spacer(Modifier.height(6.dp))
+                        FilledTonalButton(onClick = { ch.akh.kompass.alarm.ClockAlarm.ensure(ctx, force = true) }) {
+                            Text("Wecker auf ${Time.hm(prefs.currentWake)} stellen")
+                        }
+                    }
                 }
             }
         }
@@ -250,6 +257,10 @@ fun BriefingScreen(kind: String, onBack: () -> Unit) {
             val done = prefs.briefingDone(kind, todayStr)
             Button(
                 onClick = {
+                    // Wer den Morgen-Check-in macht, ist wach: Tag starten, falls noch nicht geschehen.
+                    if (morning && Time.today() < Time.calToday()) {
+                        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { e.wake() }
+                    }
                     prefs.setBriefingDone(kind, todayStr, true)
                     ch.akh.kompass.alarm.Notify.cancel(ctx, ch.akh.kompass.alarm.ReminderReceiver.notifId(if (morning) "_morning" else "_evening"))
                     undo.offer("Check-in abgeschlossen") { prefs.setBriefingDone(kind, todayStr, false) }

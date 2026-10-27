@@ -240,6 +240,19 @@ class Prefs private constructor(context: Context) {
         get() = sp.getBoolean("healthSleep", true)
         set(v) = edit { putBoolean("healthSleep", v) }
 
+    // ---------- Tagesbeginn (Wach-Logik) ----------
+    val dayStore = object : ch.akh.kompass.util.Time.DayStore {
+        override fun start(d: LocalDate): Long? = sp.getLong("ds_$d", -1L).takeIf { it > 0 }
+        override fun source(d: LocalDate): String? = sp.getString("dss_$d", null)
+        override fun record(d: LocalDate, at: Long, source: String) {
+            sp.edit().putLong("ds_$d", at).putString("dss_$d", source).apply()
+        }
+        override fun clear(d: LocalDate) {
+            sp.edit().remove("ds_$d").remove("dss_$d").apply()
+        }
+        override fun planWake(): Int = currentWake
+    }
+
     fun bump() { _version.value = _version.value + 1 }
 
     companion object {

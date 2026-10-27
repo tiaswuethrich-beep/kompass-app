@@ -154,8 +154,9 @@ object ScreenTime {
     fun systemUsage(context: Context, d: LocalDate): Map<String, Long> {
         if (!hasPermission(context)) return emptyMap()
         val usm = context.getSystemService(UsageStatsManager::class.java) ?: return emptyMap()
-        val start = Time.startOfDay(d)
-        val end = minOf(Time.endOfDay(d), System.currentTimeMillis())
+        // Android speichert Kalendertage, darum hier Mitternacht als Grenze.
+        val start = Time.calStart(d)
+        val end = minOf(Time.calStart(d.plusDays(1)), System.currentTimeMillis())
         val out = HashMap<String, Long>()
         val list = try {
             usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
@@ -195,7 +196,7 @@ object ScreenTime {
             var t = s.start
             while (t < s.end) {
                 val h = Time.minuteOfDay(t) / 60
-                val next = minOf(s.end, Time.startOfDay(Time.dayOf(t)) + (h + 1) * 3600_000L)
+                val next = minOf(s.end, Time.at(Time.calDay(t), (h + 1) * 60))
                 if (next <= t) break
                 perHour[h] += (next - t) / 60_000f
                 t = next

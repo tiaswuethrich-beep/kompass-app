@@ -1,5 +1,7 @@
 package ch.akh.kompass.plan
 
+import ch.akh.kompass.data.snusPerDay
+import ch.akh.kompass.data.snusPerDayOnce
 import android.content.Context
 import ch.akh.kompass.data.AppDatabase
 import ch.akh.kompass.data.CustomHabit
@@ -96,6 +98,18 @@ class Engine(context: Context) {
         prefs.lastShiftCheck = today
     }
 
+    /** "Gute Nacht" gedrückt und noch nicht "Wach". */
+    suspend fun sleeping(): Boolean = dao.openSleep() != null
+
+    /** Nachtruhe: nach "Gute Nacht" oder zwischen Licht aus (+15 Min) und der Aufstehzeit. */
+    suspend fun quietNow(now: Long = System.currentTimeMillis()): Boolean {
+        if (sleeping()) return true
+        val m = Time.minuteOfDay(now)
+        val from = (lightsOut() + 15) % 1440
+        val to = prefs.currentWake
+        return if (from < to) m in from until to else m >= from || m < to
+    }
+
     /** Gibt eine Funktion zurück, die den Eintrag wieder rückgängig macht. */
     suspend fun goodNight(now: Long = System.currentTimeMillis()): suspend () -> Unit {
         val open = dao.openSleep()
@@ -112,7 +126,10 @@ class Engine(context: Context) {
     }
 
     /** "Ich bin wach" zurücknehmen: Aufwachzeit entfernen und "aufstehen" austragen. */
-    suspend fun undoWake(day: LocalDate = Time.today()) {
+    suspend fun undoWake(day: LocalDate = Time.calToday()) {
+        // Tagesbeginn zurücknehmen, wenn er von "Wach" kam.
+        Time.store?.let { st -> if (st.source(day) == "wach") st.clear(day) }
+        prefs.bump()
         val s = dao.sleepOn(day.toString())
         if (s != null) {
             if (s.bedAt != null) dao.upsertSleep(s.copy(wakeAt = null)) else dao.deleteSleep(s)
@@ -122,14 +139,19 @@ class Engine(context: Context) {
 
     /** Morgens "Wach" gedrückt (oder Wecker beendet). Gibt das Level für "aufstehen" zurück. */
     suspend fun wake(now: Long = System.currentTimeMillis()): Int {
-        val day = Time.dayOf(now)
+        // "Wach" startet den neuen Tag (ab 3 Uhr, davor zählt es als Nickerchen).
+        val day = Time.beginDay(now)
+        // Die Nacht gehört zum Kalendertag des Aufwachens.
+        val wakeDate = Time.calDay(now).toString()
         val open = dao.openSleep()
-        val existing = dao.sleepOn(day.toString())
+        val existing = dao.sleepOn(wakeDate)
         if (open != null && now - (open.bedAt ?: 0) < 16 * 3600_000L) {
-            dao.upsertSleep(open.copy(wakeAt = now, wakeDate = day.toString()))
+            dao.upsertSleep(open.copy(wakeAt = now, wakeDate = wakeDate))
         } else if (existing == null) {
-            dao.insertSleep(SleepEntry(bedAt = null, wakeAt = now, wakeDate = day.toString()))
+            dao.insertSleep(SleepEntry(bedAt = null, wakeAt = now, wakeDate = wakeDate))
         }
+        prefs.bump()
+        if (Time.minuteOfDay(now) < Time.EARLIEST_WAKE) return 0
         val diff = abs(Time.circularDiff(Time.minuteOfDay(now), prefs.currentWake))
         val level = when {
             diff <= 10 -> 2

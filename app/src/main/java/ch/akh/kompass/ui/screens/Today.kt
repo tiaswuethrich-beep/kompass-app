@@ -89,10 +89,7 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
     val mood by dao.moodOn(todayStr).collectAsState(initial = null)
 
     val tick = ch.akh.kompass.ui.rememberTicker()
-    // Wecker in der Uhr-App nachführen (geht nur, solange Kompass sichtbar ist).
-    LaunchedEffect(prefs.currentWake, prefs.alarmEnabled, prefs.alarmViaClock, tick) {
-        ch.akh.kompass.alarm.ClockAlarm.ensure(ctx)
-    }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             e.updateSleepShift()
@@ -155,6 +152,25 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                     Muted("Genau so baut sich das neue Normal auf. Der Rest des Tages gehört dir.")
                 }
             }
+            }
+        }
+
+        // ---------- Neuer Tag noch nicht gestartet ----------
+        val calToday = Time.calToday()
+        if (today < calToday && openSleep == null && LocalTime.now().let { it.hour * 60 + it.minute } >= Time.EARLIEST_WAKE) item(key = "startday") {
+            Section(title = "Guten Morgen?", subtitle = "Kompass zählt noch ${Time.weekday(today)}, bis du \"Wach\" drückst", highlight = true) {
+                Button(onClick = {
+                    scope.launch {
+                        val lvl = withContext(Dispatchers.IO) { e.wake().also { Scheduler.rescheduleAll(ctx) } }
+                        wakeShown = lvl
+                        undo.offer("Neuer Tag gestartet") { e.undoWake(); Scheduler.rescheduleAll(ctx) }
+                    }
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.WbSunny, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Wach, Tag starten")
+                }
+                Muted("Spätestens um ${Time.hm(Time.minuteOfDay(Time.deadline(calToday)))} beginnt der Tag von selbst.")
             }
         }
 
@@ -258,7 +274,8 @@ fun TodayScreen(nav: NavHostController, activity: MainActivity) {
                     }
                 } else {
                     FilledTonalButton(onClick = {
-                        undo.run("Gute Nacht eingetragen") { e.goodNight() }
+                        ch.akh.kompass.alarm.Notify.clearForNight(ctx)
+                        undo.run("Gute Nacht eingetragen. Ab jetzt ist Ruhe.") { e.goodNight() }
                     }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.Bedtime, null)
                         Spacer(Modifier.width(8.dp))

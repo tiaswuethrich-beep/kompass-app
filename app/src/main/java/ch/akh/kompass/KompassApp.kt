@@ -14,6 +14,7 @@ class KompassApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ch.akh.kompass.util.Time.store = Prefs.get(this).dayStore
         Notify.createChannels(this)
         if (Prefs.get(this).onboarded) {
             scope.launch { Scheduler.rescheduleAll(this@KompassApp) }

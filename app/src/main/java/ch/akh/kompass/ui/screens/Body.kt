@@ -1,5 +1,7 @@
 package ch.akh.kompass.ui.screens
 
+import ch.akh.kompass.data.snusPerDay
+import ch.akh.kompass.data.snusPerDayOnce
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -383,7 +385,7 @@ fun SubstanceScreen(onBack: () -> Unit) {
         items(list, key = { it.id }) { s ->
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(s.type, Modifier.weight(1f))
-                Muted("${Time.short(Time.dayOf(s.at))} ${Time.hm(s.at)}")
+                Muted("${Time.short(Time.calDay(s.at))} ${Time.hm(s.at)}")
                 IconButton(onClick = { undo.run("Gelöscht") { e.dao.deleteSubstance(s); suspend { e.dao.insertSubstance(s); Unit } } }) { Icon(Icons.Filled.Delete, "Löschen") }
             }
         }

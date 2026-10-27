@@ -88,4 +88,14 @@ object Notify {
     }
 
     fun cancel(context: Context, id: Int) = NotificationManagerCompat.from(context).cancel(id)
+
+    /** Nach "Gute Nacht": alle offenen Hinweise wegräumen, damit nachts nichts mehr aufleuchtet. */
+    fun clearForNight(context: Context) {
+        val nm = context.getSystemService(android.app.NotificationManager::class.java)
+        try {
+            nm.activeNotifications.filter { it.id != ID_ALARM && it.id != ID_FOCUS }.forEach { nm.cancel(it.tag, it.id) }
+        } catch (_: Exception) {
+            nm.cancelAll()
+        }
+    }
 }

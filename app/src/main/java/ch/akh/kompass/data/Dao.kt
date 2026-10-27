@@ -55,10 +55,10 @@ interface KDao {
     fun snusCountFlow(type: Int, from: Long, to: Long): Flow<Int>
     @Query("SELECT COUNT(*) FROM snus WHERE type = :type AND at >= :from AND at < :to")
     suspend fun snusCount(type: Int, from: Long, to: Long): Int
-    @Query("SELECT date(at / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS n FROM snus WHERE type = 0 AND at >= :from GROUP BY day ORDER BY day")
-    fun snusPerDay(from: Long): Flow<List<DayCount>>
-    @Query("SELECT date(at / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS n FROM snus WHERE type = 0 AND at >= :from GROUP BY day ORDER BY day")
-    suspend fun snusPerDayOnce(from: Long): List<DayCount>
+    @Query("SELECT at FROM snus WHERE type = 0 AND at >= :from ORDER BY at")
+    fun snusTimes(from: Long): Flow<List<Long>>
+    @Query("SELECT at FROM snus WHERE type = 0 AND at >= :from ORDER BY at")
+    suspend fun snusTimesOnce(from: Long): List<Long>
     @Query("SELECT MAX(at) FROM snus WHERE type = 0")
     fun lastPouchFlow(): Flow<Long?>
     @Query("SELECT MAX(at) FROM snus WHERE type = 0")

@@ -131,7 +131,7 @@ object Health {
         }
         val awake = setOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED)
         val byDay = recs.filter { java.time.Duration.between(it.startTime, it.endTime).toMinutes() >= 180 }
-            .groupBy { Time.dayOf(it.endTime.toEpochMilli()).toString() }
+            .groupBy { Time.calDay(it.endTime.toEpochMilli()).toString() }
             .mapValues { (_, l) -> l.maxBy { java.time.Duration.between(it.startTime, it.endTime).toMinutes() } }
         var n = 0
         for ((day, r) in byDay) {
@@ -157,6 +157,15 @@ object Health {
         val e = Engine.get(context)
         val today = Time.todayStr()
         val p = Prefs.get(context)
+        // Fitbit-Aufwachzeiten verfeinern vergangene Tage, wenn dort "Wach" nicht gedrückt wurde.
+        // Den heutigen Tag startet nur "Wach" (oder die Frist am Nachmittag).
+        val store = Time.store
+        for ((day, r) in byDay) {
+            val d = LocalDate.parse(day)
+            if (store != null && d < Time.calToday() && (store.source(d) == null || store.source(d) == "auto")) {
+                store.record(d, r.endTime.toEpochMilli(), "fitbit")
+            }
+        }
         byDay[today]?.let { r ->
             if (p.phase >= 1 && e.dao.habitOnce(today, "aufstehen") == null) {
                 val diff = kotlin.math.abs(Time.circularDiff(Time.minuteOfDay(r.endTime.toEpochMilli()), p.currentWake))

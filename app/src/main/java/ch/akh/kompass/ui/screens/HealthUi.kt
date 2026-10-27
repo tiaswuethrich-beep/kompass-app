@@ -76,7 +76,7 @@ fun HealthConnectCard(onSynced: () -> Unit = {}) {
             }
             else -> {
                 Muted(
-                    if (prefs.healthLastSync > 0) "Verbunden. Zuletzt geholt: ${Time.short(Time.dayOf(prefs.healthLastSync))} ${Time.hm(prefs.healthLastSync)}. Kompass holt neue Daten bei jedem Öffnen."
+                    if (prefs.healthLastSync > 0) "Verbunden. Zuletzt geholt: ${Time.short(Time.calDay(prefs.healthLastSync))} ${Time.hm(prefs.healthLastSync)}. Kompass holt neue Daten bei jedem Öffnen."
                     else "Verbunden. Kompass holt neue Daten bei jedem Öffnen.",
                 )
                 Spacer(Modifier.height(6.dp))

@@ -1,5 +1,7 @@
 package ch.akh.kompass.ui.screens
 
+import ch.akh.kompass.data.snusPerDay
+import ch.akh.kompass.data.snusPerDayOnce
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row

@@ -20,15 +20,81 @@ object Time {
     private val dmyFmt = DateTimeFormatter.ofPattern("d. MMM yyyy", de)
     private val wdFmt = DateTimeFormatter.ofPattern("EE", de)
 
-    fun today(): LocalDate = LocalDate.now()
+    /**
+     * Speichert, wann ein Tag begonnen hat. Ein Tag beginnt mit "Wach", nicht um Mitternacht.
+     * Wird beim App-Start gesetzt (siehe KompassApp).
+     */
+    interface DayStore {
+        fun start(d: LocalDate): Long?
+        fun record(d: LocalDate, at: Long, source: String)
+        fun source(d: LocalDate): String?
+        fun clear(d: LocalDate)
+        /** Geplante Aufstehzeit in Minuten nach Mitternacht. */
+        fun planWake(): Int
+    }
+
+    @Volatile var store: DayStore? = null
+
+    /** Frühestens ab 3 Uhr kann "Wach" einen neuen Tag beginnen (sonst war es ein Nickerchen). */
+    const val EARLIEST_WAKE = 3 * 60
+
+    /** Kalenderdatum, nur für Anzeigen und den Schlaf (Nacht gehört zum Tag des Aufwachens). */
+    fun calToday(): LocalDate = LocalDate.now(zone)
+    fun calDay(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+    fun calStart(d: LocalDate): Long = d.atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /** Spätester Beginn eines Tages, falls "Wach" vergessen wurde: 14 Uhr oder 4 Stunden nach der geplanten Aufstehzeit. */
+    fun deadline(d: LocalDate): Long {
+        val plan = store?.planWake() ?: (7 * 60)
+        return at(d, maxOf(14 * 60, plan + 4 * 60).coerceAtMost(23 * 60))
+    }
+
+    /**
+     * Beginn eines Tages: wann "Wach" gedrückt wurde. Ohne Eintrag: bei vergangenen Tagen die geplante
+     * Aufstehzeit, beim heutigen Kalendertag die Frist (bis dahin läuft noch der Vortag).
+     */
+    fun startOfDay(d: LocalDate): Long {
+        val s = store ?: return calStart(d)
+        s.start(d)?.let { return it }
+        return if (d >= calToday()) deadline(d) else at(d, s.planWake())
+    }
+
+    fun endOfDay(d: LocalDate): Long = startOfDay(d.plusDays(1))
+
+    /** Der aktuelle Tag. Wechselt mit "Wach" (oder spätestens zur Frist), nicht um Mitternacht. */
+    fun today(): LocalDate {
+        val cal = calToday()
+        val now = System.currentTimeMillis()
+        val s = store
+        if (s != null && s.start(cal) == null && now >= deadline(cal)) {
+            // Wach vergessen: Tag beginnt automatisch, damit Zähler nicht ewig am Vortag hängen.
+            s.record(cal, deadline(cal), "auto")
+        }
+        return if (now >= startOfDay(cal)) cal else cal.minusDays(1)
+    }
+
     fun todayStr(): String = today().toString()
 
-    fun dayOf(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+    /** Zu welchem Tag ein Zeitpunkt gehört (nach der Wach-Logik). */
+    fun dayOf(millis: Long): LocalDate {
+        val c = calDay(millis)
+        return if (millis >= startOfDay(c)) c else c.minusDays(1)
+    }
+
+    /** "Wach" gedrückt: beginnt einen neuen Tag, wenn es dafür nicht zu früh ist. Gibt den Tag zurück. */
+    fun beginDay(now: Long = System.currentTimeMillis(), source: String = "wach"): LocalDate {
+        val cal = calDay(now)
+        val s = store ?: return cal
+        val existing = s.start(cal)
+        val src = s.source(cal)
+        if (minuteOfDay(now) >= EARLIEST_WAKE && (existing == null || (src == "auto" && now < existing) || src == "fitbit")) {
+            s.record(cal, now, source)
+        }
+        return dayOf(now)
+    }
+
     fun timeOf(millis: Long): LocalTime = Instant.ofEpochMilli(millis).atZone(zone).toLocalTime()
     fun minuteOfDay(millis: Long): Int = timeOf(millis).let { it.hour * 60 + it.minute }
-
-    fun startOfDay(d: LocalDate): Long = d.atStartOfDay(zone).toInstant().toEpochMilli()
-    fun endOfDay(d: LocalDate): Long = startOfDay(d.plusDays(1))
     fun at(d: LocalDate, minuteOfDay: Int): Long {
         val m = ((minuteOfDay % 1440) + 1440) % 1440
         val dayShift = Math.floorDiv(minuteOfDay, 1440).toLong()

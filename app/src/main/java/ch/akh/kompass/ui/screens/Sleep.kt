@@ -88,7 +88,7 @@ fun SleepScreen(onBack: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text("Wecker")
                         Muted(
-                            Scheduler.nextWake(ctx)?.let { "Nächster: ${Time.weekday(Time.dayOf(it))} ${Time.hm(it)}" } ?: "Aus",
+                            Scheduler.nextWake(ctx)?.let { "Nächster: ${Time.weekday(Time.calDay(it))} ${Time.hm(it)}" } ?: "Aus",
                         )
                     }
                     Switch(checked = prefs.alarmEnabled, onCheckedChange = {
@@ -101,19 +101,18 @@ fun SleepScreen(onBack: () -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text("Über die Samsung-Uhr")
                             Muted(
-                                if (prefs.alarmViaClock) "Kompass stellt den Wecker \"Kompass\" in der Uhr-App, bei jedem Öffnen für den nächsten Morgen."
+                                if (prefs.alarmViaClock) "Nur auf Knopfdruck: \"Wecker stellen\" öffnet die Uhr-App mit deiner Zielzeit ${Time.hm(prefs.currentWake)}."
                                 else "Der eigene Kompass-Wecker klingelt.",
                             )
                         }
                         Switch(checked = prefs.alarmViaClock, onCheckedChange = {
                             prefs.alarmViaClock = it
                             prefs.clockAlarmSet = ""
-                            if (it) ch.akh.kompass.alarm.ClockAlarm.ensure(ctx, force = true)
                             resched()
                         })
                     }
                     if (prefs.alarmViaClock) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { ch.akh.kompass.alarm.ClockAlarm.ensure(ctx, force = true) }) { Text("Jetzt stellen") }
+                        Button(onClick = { ch.akh.kompass.alarm.ClockAlarm.ensure(ctx, force = true) }) { Text("Wecker stellen") }
                         OutlinedButton(onClick = { ch.akh.kompass.alarm.ClockAlarm.openClock(ctx) }) { Text("Uhr-App öffnen") }
                     }
                 }
@@ -211,7 +210,7 @@ fun SleepScreen(onBack: () -> Unit) {
             item {
                 Row(Modifier.fillMaxWidth().clickable { edit = s }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        val day = s.wakeAt?.let { Time.dayOf(it) } ?: s.bedAt?.let { Time.dayOf(it) }
+                        val day = s.wakeAt?.let { Time.calDay(it) } ?: s.bedAt?.let { Time.calDay(it) }
                         Text(day?.let { "${Time.weekday(it)} ${Time.short(it)}" } ?: "")
                         Muted(
                             "${s.bedAt?.let { Time.hm(it) } ?: "?"} bis ${s.wakeAt?.let { Time.hm(it) } ?: if (System.currentTimeMillis() - (s.bedAt ?: 0L) < 16 * 3600_000L) "läuft" else "Aufwachen fehlt, antippen"}" +
@@ -266,8 +265,8 @@ private fun SleepEditDialog(s: SleepEntry, onDismiss: () -> Unit, onSave: (Sleep
         title = { Text("Nacht bearbeiten") },
         text = {
             Column {
-                TextButton(onClick = { which = "bed" }) { Text("Eingeschlafen: ${bed?.let { "${Time.short(Time.dayOf(it))} ${Time.hm(it)}" } ?: "–"}") }
-                TextButton(onClick = { which = "wake" }) { Text("Aufgewacht: ${wake?.let { "${Time.short(Time.dayOf(it))} ${Time.hm(it)}" } ?: "–"}") }
+                TextButton(onClick = { which = "bed" }) { Text("Eingeschlafen: ${bed?.let { "${Time.short(Time.calDay(it))} ${Time.hm(it)}" } ?: "–"}") }
+                TextButton(onClick = { which = "wake" }) { Text("Aufgewacht: ${wake?.let { "${Time.short(Time.calDay(it))} ${Time.hm(it)}" } ?: "–"}") }
                 Text("Wie erholt?", style = MaterialTheme.typography.labelLarge)
                 ScaleRow("Qualität", quality) { quality = it }
             }
@@ -275,7 +274,7 @@ private fun SleepEditDialog(s: SleepEntry, onDismiss: () -> Unit, onSave: (Sleep
         confirmButton = {
             Button(onClick = {
                 val w = wake
-                onSave(s.copy(bedAt = bed, wakeAt = w, wakeDate = w?.let { Time.dayOf(it).toString() } ?: s.wakeDate, quality = quality))
+                onSave(s.copy(bedAt = bed, wakeAt = w, wakeDate = w?.let { Time.calDay(it).toString() } ?: s.wakeDate, quality = quality))
             }) { Text("Speichern") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
@@ -283,12 +282,12 @@ private fun SleepEditDialog(s: SleepEntry, onDismiss: () -> Unit, onSave: (Sleep
     when (which) {
         "bed" -> TimeDialog(bed?.let { Time.minuteOfDay(it) } ?: 23 * 60, "Eingeschlafen", { which = null }) { m ->
             // Abends = Vortag des Aufwachens, nach Mitternacht = gleicher Tag.
-            val wakeDay: LocalDate = wake?.let { Time.dayOf(it) } ?: Time.today()
+            val wakeDay: LocalDate = wake?.let { Time.calDay(it) } ?: Time.calToday()
             bed = if (m >= 12 * 60) Time.at(wakeDay.minusDays(1), m) else Time.at(wakeDay, m)
             which = null
         }
         "wake" -> TimeDialog(wake?.let { Time.minuteOfDay(it) } ?: 7 * 60, "Aufgewacht", { which = null }) { m ->
-            val day: LocalDate = wake?.let { Time.dayOf(it) } ?: Time.today()
+            val day: LocalDate = wake?.let { Time.calDay(it) } ?: Time.calToday()
             wake = Time.at(day, m)
             which = null
         }
