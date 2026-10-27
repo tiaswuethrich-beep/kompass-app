@@ -240,6 +240,38 @@ class Prefs private constructor(context: Context) {
         get() = sp.getBoolean("healthSleep", true)
         set(v) = edit { putBoolean("healthSleep", v) }
 
+    // ---------- Blocker ----------
+    var blockShorts: Boolean
+        get() = sp.getBoolean("blockShorts", true)
+        set(v) = edit { putBoolean("blockShorts", v) }
+
+    var blockTikTok: Boolean
+        get() = sp.getBoolean("blockTikTok", false)
+        set(v) = edit { putBoolean("blockTikTok", v) }
+
+    /** Feierabend in Minuten nach Mitternacht, -1 = aus. */
+    var eveningStart: Int
+        get() = sp.getInt("eveningStart", 20 * 60)
+        set(v) = edit { putInt("eveningStart", v) }
+
+    /** Nach so vielen Minuten Unterhaltung am Feierabend kommt die Nachfrage. */
+    var eveningAskAfter: Int
+        get() = sp.getInt("eveningAsk", 30)
+        set(v) = edit { putInt("eveningAsk", v) }
+
+    var eveningExtend: Int
+        get() = sp.getInt("eveningExtend", 15)
+        set(v) = edit { putInt("eveningExtend", v) }
+
+    /** Hartes Tageslimit für Unterhaltung (nutzt entertainmentBudget). */
+    var hardLimit: Boolean
+        get() = sp.getBoolean("hardLimit", true)
+        set(v) = edit { putBoolean("hardLimit", v) }
+
+    var blockedCount: Int
+        get() = sp.getInt("blockedCount", 0)
+        set(v) = sp.edit().putInt("blockedCount", v).apply()
+
     // ---------- Tagesbeginn (Wach-Logik) ----------
     val dayStore = object : ch.akh.kompass.util.Time.DayStore {
         override fun start(d: LocalDate): Long? = sp.getLong("ds_$d", -1L).takeIf { it > 0 }

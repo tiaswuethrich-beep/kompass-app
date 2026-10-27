@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">Kompass</string>
     <string name="widget_description">Dein Tag auf einen Blick: Gewohnheiten abhaken, Snus, Schlaf, Fokus und Bildschirmzeit.</string>
+    <string name="blocker_label">Kompass Blocker</string>
+    <string name="blocker_description">Blockiert Reels und Shorts (ausser aus DMs) und fragt am Feierabend nach, ob du wirklich weiterschauen willst. Kompass liest dafür nur, welcher Bildschirm offen ist, speichert nichts und schickt nichts weg.</string>
 </resources>
