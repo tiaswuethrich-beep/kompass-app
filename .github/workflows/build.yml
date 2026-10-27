@@ -28,7 +28,7 @@ jobs:
           name: Kompass-APK
           path: Kompass.apk
       - name: Als Release veröffentlichen
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

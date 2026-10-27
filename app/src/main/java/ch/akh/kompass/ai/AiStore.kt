@@ -69,11 +69,39 @@ class AiStore private constructor(context: Context) {
 
     fun deleteKey() {
         edit { remove("key_ct"); remove("key_iv"); remove("key_hint") }
-        try {
+        if (!hasGithub) try {
             KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS)
         } catch (_: Exception) {
         }
     }
+
+    // ---------------- GitHub-Schlüssel (für Wünsche und Updates) ----------------
+
+    val hasGithub: Boolean get() = sp.contains("gh_ct")
+
+    fun saveGithub(raw: String) {
+        val c = Cipher.getInstance(TRANSFORM)
+        c.init(Cipher.ENCRYPT_MODE, secretKey())
+        val ct = c.doFinal(raw.trim().toByteArray(Charsets.UTF_8))
+        edit {
+            putString("gh_ct", Base64.encodeToString(ct, Base64.NO_WRAP))
+            putString("gh_iv", Base64.encodeToString(c.iv, Base64.NO_WRAP))
+        }
+    }
+
+    fun loadGithub(): String? {
+        val ct = sp.getString("gh_ct", null) ?: return null
+        val iv = sp.getString("gh_iv", null) ?: return null
+        return try {
+            val c = Cipher.getInstance(TRANSFORM)
+            c.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+            String(c.doFinal(Base64.decode(ct, Base64.NO_WRAP)), Charsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun deleteGithub() = edit { remove("gh_ct"); remove("gh_iv") }
 
     private fun secretKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
