@@ -20,3 +20,10 @@
 -dontwarn io.opentelemetry.**
 -dontwarn com.sun.net.httpserver.**
 -dontwarn java.lang.management.**
+# JSON-Schema-Generator des SDK (nur für strukturierte Ausgaben, hier ungenutzt) nutzt Java-APIs, die Android nicht hat.
+-dontwarn com.github.victools.**
+-dontwarn java.lang.reflect.AnnotatedType
+-dontwarn java.lang.reflect.AnnotatedParameterizedType
+-dontwarn java.lang.reflect.AnnotatedArrayType
+-dontwarn java.lang.reflect.AnnotatedWildcardType
+-dontwarn java.lang.reflect.AnnotatedTypeVariable
