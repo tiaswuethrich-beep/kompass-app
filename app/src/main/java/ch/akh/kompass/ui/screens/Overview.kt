@@ -150,6 +150,7 @@ fun ScreenTimeScreen(onBack: () -> Unit) {
                 Muted("Schnitt: ${Time.durMs(w.sumOf { it.total } / 7)} gesamt, ${Time.durMs(w.sumOf { it.entertainment } / 7)} Games und Videos pro Tag")
             }
         }
+        item { BlockerSection() }
         item {
             Section(title = "Tagesbudget für Games und Videos", subtitle = if (prefs.phase < 3) "Aktiv ab Phase 3, du kannst es aber schon setzen" else null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -274,5 +275,69 @@ fun HistoryScreen() {
                 LineChart(days.map { map[it.toString()]?.joy?.toFloat() }, listOf(Time.short(days.first()), Time.short(days.last())), min = 1f, max = 5f, height = 90.dp)
             }
         }
+    }
+}
+
+// ======================= Blocker =======================
+
+@Composable
+fun BlockerSection() {
+    val ctx = LocalContext.current
+    val prefs = prefsState()
+    val tick = rememberTicker(5_000L)
+    val on = remember(tick) { ch.akh.kompass.blocker.BlockerService.enabled(ctx) }
+    var pickEvening by remember { mutableStateOf(false) }
+    Section(title = "Blocker", subtitle = if (on) "Aktiv. ${prefs.blockedCount}x Reels oder Shorts weggeklickt." else "Noch nicht eingeschaltet", highlight = !on) {
+        if (!on) {
+            Muted("Der Blocker läuft als Bedienungshilfe. Nur so kann Android erkennen, ob in YouTube oder Instagram gerade Shorts oder Reels offen sind. Kompass speichert dabei nichts und schickt nichts weg.")
+            Spacer(Modifier.height(6.dp))
+            Muted("So geht's: Tippen, dann \"Installierte Apps\" > \"Kompass Blocker\" einschalten. Steht dort \"Eingeschränkte Einstellung\": In den App-Infos von Kompass oben rechts auf ⋮ tippen, \"Eingeschränkte Einstellungen zulassen\" wählen und es nochmals versuchen.")
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { ctx.startActivity(ch.akh.kompass.blocker.BlockerService.settingsIntent()) }) { Text("Blocker einschalten") }
+                androidx.compose.material3.OutlinedButton(onClick = {
+                    ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${ctx.packageName}")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }) { Text("App-Infos") }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        BlockerToggle("Reels und Shorts blockieren", "Reels aus DMs und geteilte Shorts-Links gehen weiterhin", prefs.blockShorts) { prefs.blockShorts = it }
+        BlockerToggle("TikTok ganz blockieren", "TikTok besteht nur aus Kurzvideos", prefs.blockTikTok) { prefs.blockTikTok = it }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Feierabend")
+                Muted(if (prefs.eveningStart >= 0) "Ab ${Time.hm(prefs.eveningStart)}: nach ${prefs.eveningAskAfter} Min Videos und Games kommt eine Nachfrage" else "Aus")
+            }
+            Switch(checked = prefs.eveningStart >= 0, onCheckedChange = { prefs.eveningStart = if (it) 20 * 60 else -1 })
+        }
+        if (prefs.eveningStart >= 0) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.TextButton(onClick = { pickEvening = true }) { Text("Ab ${Time.hm(prefs.eveningStart)}") }
+                listOf(15, 30, 45, 60).forEach { m ->
+                    FilterChip(selected = prefs.eveningAskAfter == m, onClick = { prefs.eveningAskAfter = m }, label = { Text("$m min") })
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        BlockerToggle(
+            "Hartes Tageslimit", "Ab ${Time.dur(prefs.entertainmentBudget)} Games und Videos ist für heute Schluss. Das Limit stellst du unten ein.",
+            prefs.hardLimit,
+        ) { prefs.hardLimit = it }
+    }
+    if (pickEvening) ch.akh.kompass.ui.TimeDialog(prefs.eveningStart.coerceAtLeast(0), "Feierabend ab", { pickEvening = false }) {
+        prefs.eveningStart = it
+        pickEvening = false
+    }
+}
+
+@Composable
+private fun BlockerToggle(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            Muted(sub)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }

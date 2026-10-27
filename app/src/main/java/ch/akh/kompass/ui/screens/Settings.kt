@@ -101,6 +101,7 @@ fun PermissionsBlock(refreshKey: Int, onChanged: () -> Unit) {
     val usage = ScreenTime.hasPermission(ctx)
     val battery = ch.akh.kompass.util.Dnd.batteryUnrestricted(ctx)
     val dnd = ch.akh.kompass.util.Dnd.granted(ctx)
+    val blocker = ch.akh.kompass.blocker.BlockerService.enabled(ctx)
     val healthAvailable = remember(tick) { ch.akh.kompass.util.Health.available(ctx) }
     val health by androidx.compose.runtime.produceState(false, refreshKey, tick) {
         value = withContext(Dispatchers.IO) { ch.akh.kompass.util.Health.hasAll(ctx) }
@@ -123,9 +124,10 @@ fun PermissionsBlock(refreshKey: Int, onChanged: () -> Unit) {
         healthAvailable && !health -> { { healthLauncher.launch(ch.akh.kompass.util.Health.PERMISSIONS) } }
         !battery -> { { open(ch.akh.kompass.util.Dnd.batteryIntent(ctx)) } }
         !dnd -> { { open(ch.akh.kompass.util.Dnd.settingsIntent()) } }
+        !blocker -> { { open(ch.akh.kompass.blocker.BlockerService.settingsIntent()) } }
         else -> null
     }
-    val missing = listOf(notif, exact, full, usage, cal, battery, dnd, !healthAvailable || health).count { !it }
+    val missing = listOf(notif, exact, full, usage, cal, battery, dnd, blocker, !healthAvailable || health).count { !it }
     Column {
         if (nextStep != null) {
             Button(onClick = nextStep, modifier = Modifier.fillMaxWidth()) {
@@ -153,6 +155,7 @@ fun PermissionsBlock(refreshKey: Int, onChanged: () -> Unit) {
             healthLauncher.launch(ch.akh.kompass.util.Health.PERMISSIONS)
         }
         PermissionRow("Ohne Akku-Einschränkung", battery, "Damit Android Erinnerungen nicht verschluckt") { open(ch.akh.kompass.util.Dnd.batteryIntent(ctx)) }
+        PermissionRow("Blocker für Reels und Shorts", blocker, "Als Bedienungshilfe, Einstellungen unter Bildschirmzeit") { open(ch.akh.kompass.blocker.BlockerService.settingsIntent()) }
         PermissionRow("Nicht stören steuern", dnd, "Lautlos ab \"Gute Nacht\" bis \"Wach\" und während Fokus-Blöcken") { open(ch.akh.kompass.util.Dnd.settingsIntent()) }
     }
 }
