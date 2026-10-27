@@ -82,6 +82,7 @@ fun ScreenTimeScreen(onBack: () -> Unit) {
     Screen(title = "Bildschirmzeit", onBack = onBack, actions = {
         IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Neu laden") }
     }) {
+        if (has) aiItem(ch.akh.kompass.ai.AiFeature.SCREEN)
         if (!has) {
             item {
                 Section(title = "Zugriff fehlt") {

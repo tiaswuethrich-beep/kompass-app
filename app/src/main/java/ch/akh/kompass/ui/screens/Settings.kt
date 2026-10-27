@@ -259,6 +259,7 @@ fun SettingsScreen(nav: NavHostController) {
                 Muted("Aktuell ${prefs.stepGoal} Schritte. Wer an 10 von 14 Tagen das Ziel schafft, bekommt 500 dazu.")
             }
         }
+        item { AiSettingsSection() }
         item {
             Section(title = "Sicherung", subtitle = "Alles liegt nur auf deinem Handy. Sichere es ab und zu, zum Beispiel in Google Drive.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

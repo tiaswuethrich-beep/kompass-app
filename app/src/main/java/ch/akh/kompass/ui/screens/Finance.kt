@@ -117,6 +117,8 @@ fun FinanceScreen(onBack: () -> Unit) {
     Screen(title = "Finanzen", onBack = onBack, fab = {
         FloatingActionButton(onClick = { add = true }) { Icon(Icons.Filled.Add, "Buchung eintragen") }
     }) {
+        aiItem(ch.akh.kompass.ai.AiFeature.MONEY)
+        aiCategorizeItem()
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { month = month.minusMonths(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Vorheriger Monat") }

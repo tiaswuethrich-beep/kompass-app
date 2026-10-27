@@ -94,6 +94,7 @@ fun GymScreen(nav: NavHostController, onBack: () -> Unit) {
     }
 
     Screen(title = "Gym", onBack = onBack) {
+        aiItem(ch.akh.kompass.ai.AiFeature.GYM)
         item {
             Section(title = "Diese Woche") {
                 Row {

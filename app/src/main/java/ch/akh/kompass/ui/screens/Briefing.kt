@@ -83,6 +83,7 @@ fun BriefingScreen(kind: String, onBack: () -> Unit) {
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { e.syncAuto(); Health.syncSteps(ctx) } }
 
     Screen(title = if (morning) "Morgen-Check-in" else "Abend-Check-in", onBack = onBack) {
+        aiItem(if (morning) ch.akh.kompass.ai.AiFeature.MORNING else ch.akh.kompass.ai.AiFeature.EVENING)
         item {
             Muted(
                 if (morning) "${Time.nice(today)}. Eine Minute, dann los in den Tag."

@@ -75,6 +75,7 @@ fun PlanScreen(nav: NavHostController) {
     }
 
     Screen(title = "Dein Plan") {
+        aiItem(ch.akh.kompass.ai.AiFeature.PLAN)
         item {
             Section(title = "Bis zur RS", subtitle = "${ChronoUnit.DAYS.between(Time.today(), rsDate)} Tage bis August 2027") {
                 Progress(done / total)

@@ -157,6 +157,8 @@ fun KompassRoot(activity: MainActivity) {
             composable("mood") { MoodScreen(back) }
             composable("substances") { SubstanceScreen(back) }
             composable("habits") { HabitsScreen(back) }
+            composable("coach") { ch.akh.kompass.ui.screens.CoachScreen(back) }
+            composable("meals") { ch.akh.kompass.ui.screens.MealsScreen(back) }
             composable("briefing/{kind}") { BriefingScreen(it.arguments?.getString("kind") ?: "morgen", back) }
         }
     }

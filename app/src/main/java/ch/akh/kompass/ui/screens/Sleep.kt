@@ -74,6 +74,7 @@ fun SleepScreen(onBack: () -> Unit) {
     val wakeAvg = done.take(7).map { Time.minuteOfDay(it.wakeAt!!) }.let { if (it.isEmpty()) null else it.sum() / it.size }
 
     Screen(title = "Schlaf", onBack = onBack) {
+        aiItem(ch.akh.kompass.ai.AiFeature.SLEEP)
         item {
             Section(title = "Dein Schlaf-Anker") {
                 Row {
